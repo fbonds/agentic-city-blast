@@ -1,5 +1,6 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import { CityRenderer } from './canvas/CityRenderer';
+import { hitTestBuildings, nearestBuildingToScreen } from './canvas/HitTester';
 import { useAnimationFrame } from './hooks/useAnimationFrame';
 import { useCityKeyboard } from './hooks/useCityKeyboard';
 import { useCityStore } from './store/cityStore';
@@ -56,9 +57,33 @@ export function App(): JSX.Element {
   const setCity = useCityStore((s) => s.setCity);
   const showLabels = useUiStore((s) => s.showLabels);
   const cursorBuildingId = useUiStore((s) => s.cursorBuildingId);
+  const setCursor = useUiStore((s) => s.setCursor);
+  const selectBuilding = useUiStore((s) => s.selectBuilding);
 
   // Keyboard navigation: cursor, selection, camera, toggles
   useCityKeyboard(rendererRef);
+
+  // Click handler: exact hit → select + set cursor; miss → set cursor to nearest.
+  // Camera uses CSS-pixel coordinates (project/unproject operate in CSS space),
+  // so we compare against CSS-pixel mouse positions, not DPR-scaled canvas pixels.
+  const handleCanvasClick = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const renderer = rendererRef.current;
+      if (!renderer) return;
+      const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const hit = hitTestBuildings(renderer.camera, city.buildings, sx, sy);
+      if (hit) {
+        setCursor(hit.id);
+        selectBuilding(hit.id);
+      } else {
+        const nearest = nearestBuildingToScreen(renderer.camera, city.buildings, sx, sy);
+        if (nearest) setCursor(nearest.id);
+      }
+    },
+    [city.buildings, setCursor, selectBuilding],
+  );
 
   // Initialize renderer and load demo data
   useEffect(() => {
@@ -108,6 +133,7 @@ export function App(): JSX.Element {
   return (
     <canvas
       ref={canvasRef}
+      onClick={handleCanvasClick}
       style={{
         display: 'block',
         position: 'fixed',
