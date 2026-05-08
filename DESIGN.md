@@ -7,30 +7,30 @@
 ## System Overview
 
 ```
-┌──────────────┐     ┌─────────────────┐     ┌──────────────────┐
-│  Git Repo    │────▶│  Agent City     │────▶│  Browser Client  │
-│  (on disk)   │     │  Go Backend     │     │  (React + Canvas)│
-└──────────────┘     │  (HTTP + WS)    │     └──────────────────┘
-                     └────────┬────────┘
-                              ▲
-                     ┌────────┴────────┐
-                     │  Agent Racer    │  ← already running, detects agents passively
-                     │  (WS client)    │
-                     │  localhost:8080  │
-                     └────────┬────────┘
-                              ▲
-               ┌──────────────┼──────────────┐
-               │              │              │
-          Claude Code     Codex CLI    Gemini CLI
-          (~/.claude/     (~/.codex/   (~/.gemini/
-           projects/)     sessions/)    tmp/)
+┌──────────────┐     ┌─────────────────────────┐     ┌──────────────────┐
+│  Git Repo    │────▶│  Agent City Go Backend   │────▶│  Browser Client  │
+│  (on disk)   │     │  (HTTP + WS)             │     │  (React + Canvas)│
+└──────────────┘     │                           │     └──────────────────┘
+                     │  ┌─────────────────────┐ │
+                     │  │ agentwatch.Monitor   │ │  ← imported library, runs in-process
+                     │  │ (poll + event sink)  │ │
+                     │  └────────┬─────────────┘ │
+                     └───────────┼───────────────┘
+                                 ▲
+                  ┌──────────────┼──────────────┐
+                  │              │              │
+             Claude Code     Codex CLI    Gemini CLI
+             (~/.claude/     (~/.codex/   (~/.gemini/
+              projects/)     sessions/)    tmp/)
 ```
 
-A Go backend scans a Git repository and connects to a running
-[agent-racer](~/Projects/agent-racer) server to receive real-time agent session data.
-Agent-racer already handles all agent detection — JSONL parsing, process scanning, tmux
-resolution — for Claude Code, Codex, and Gemini. Agent-city consumes this via WebSocket
-and maps sessions onto the isometric city visualization.
+A Go backend scans a Git repository and imports the
+[agentwatch](https://github.com/mrf/agentwatch) library (`go get github.com/mrf/agentwatch`)
+to detect and monitor agent sessions in-process. Agentwatch handles all agent detection —
+JSONL parsing, session lifecycle, stale detection — for Claude Code, Codex, and Gemini
+via its `Source` interface. Agent-city creates a `monitor.Monitor` with the appropriate
+sources, polls via `Monitor.Run()`, and reads session state via `Monitor.Snapshot()` or
+reacts to changes via a `monitor.EventSink`.
 
 Visual direction comes from the prototypes in `code-sim/`, primarily `sketch-A-v2.jsx`
 (solarized dark isometric city with flying UFO agents).
@@ -41,10 +41,10 @@ Visual direction comes from the prototypes in `code-sim/`, primarily `sketch-A-v
 
 | Component | Choice | Why |
 |-----------|--------|-----|
-| Backend | **Go 1.22+** | Excellent concurrency for file watching + WS fan-out; user preference |
+| Backend | **Go 1.25+** | Excellent concurrency for file watching + WS fan-out; user preference; required by agentwatch |
 | HTTP routing | **net/http** (stdlib) | Go 1.22 pattern routing covers this API surface |
 | WebSocket | **gorilla/websocket** | De facto standard |
-| Agent detection | **agent-racer** (WS client) | Already production-grade for Claude/Codex/Gemini; no reimplementation |
+| Agent detection | **[agentwatch](https://github.com/mrf/agentwatch)** (imported library) | In-process monitor with pull (`Snapshot()`) and push (`EventSink`) APIs; built-in sources for Claude/Codex/Gemini; no external server needed |
 | Git access | **go-git/v5** | Pure Go, no CGO/libgit2 |
 | File watching | **fsnotify** | Cross-platform, inotify on Linux/WSL2 |
 | Frontend | **React 18 + TypeScript** | Prototype already uses React |
@@ -72,8 +72,8 @@ internal/
     analyzer.go                       — regex import extraction (TS/JS, Go, Python)
     graph.go                          — adjacency list → Road edges
   agents/
-    tracker.go                        — agent lifecycle, maps agent-racer sessions to city agents
-    racer.go                          — WebSocket client to agent-racer server
+    tracker.go                        — agent lifecycle, maps agentwatch sessions to city agents
+    monitor.go                        — agentwatch monitor setup, source config, event sink bridge
     spawner.go                        — Phase 2: create worktree + tmux + claude session
     prompts.go                        — Phase 2: role → prompt template generation
   layout/
@@ -158,24 +158,50 @@ phrased as likely affected files unless backed by richer language-specific analy
 
 ### Agent Tracker (`internal/agents/`)
 
-Connects to a running [agent-racer](~/Projects/agent-racer) server as a WebSocket client.
-Agent-racer already handles all agent detection (JSONL session parsing, process scanning,
-tmux pane resolution, CPU churning detection) for Claude Code, Codex, and Gemini CLI.
+Imports [agentwatch](https://github.com/mrf/agentwatch) as a library and creates a
+`monitor.Monitor` with built-in sources for Claude Code, Codex CLI, and Gemini CLI.
+Agentwatch handles all agent detection (JSONL session parsing, session lifecycle
+management, stale detection) in-process — no external server required.
 
-**POC approach:** connect to `ws://localhost:8080/ws`, authenticate, receive `snapshot` and
-`delta` messages containing `SessionState` objects. Map each session to a city Agent:
+**Setup:** create sources, build a monitor, run it in a goroutine:
+
+```go
+import (
+    "github.com/mrf/agentwatch/monitor"
+    "github.com/mrf/agentwatch/sources/claude"
+    "github.com/mrf/agentwatch/sources/codex"
+    "github.com/mrf/agentwatch/sources/gemini"
+)
+
+claudeSrc, _ := claude.New(claude.WithRoot(os.ExpandEnv("$HOME/.claude/projects")))
+codexSrc, _  := codex.New(codex.WithRoot(os.ExpandEnv("$HOME/.codex")))
+geminiSrc, _ := gemini.New(gemini.WithRoot(os.ExpandEnv("$HOME/.gemini")))
+
+mon, _ := monitor.New(
+    monitor.WithSources(claudeSrc, codexSrc, geminiSrc),
+    monitor.WithSink(agentBridge),  // implements monitor.EventSink
+    monitor.WithPollInterval(2 * time.Second),
+)
+go mon.Run(ctx)
+```
+
+**Pull API:** `mon.Snapshot()` returns a `[]session.SessionState` deep copy on demand.
+**Push API:** the `monitor.EventSink` receives `monitor.Event` envelopes (delta, lifecycle,
+health) after each poll cycle. Agent-city implements `EventSink` to bridge updates into
+the city state.
+
+Map each `session.SessionState` to a city Agent:
 
 ```
-agent-racer SessionState          →  agent-city Agent
+agentwatch session.SessionState   →  agent-city Agent
 ─────────────────────────────      ─────────────────────
-id: "claude:session-uuid"         →  id (composite key)
-model: "claude-opus-4-6"          →  color (family) + size (tier) + dome glow (thinking)
-activity: Thinking/ToolUse/etc    →  mode: "work" | "fly" | "idle" | "error"
-currentTool: "Edit"               →  task description
-contextUtilization: 0.45          →  progress (0–100, scaled)
-workingDir: "/home/user/project"  →  repo/worktree hint, not a file target
-branch: "feat/auth"               →  —
-tmuxTarget: "main:2.0"            →  —
+ID: "session-uuid"                →  id (composite key, prefixed by Source)
+Model: "claude-opus-4-6"          →  color (family) + size (tier) + dome glow (thinking)
+Activity: "working"/"idle"/etc    →  mode: "work" | "fly" | "idle" | "error"
+CurrentTool: "Edit"               →  task description
+ContextUtilization: 0.45          →  progress (0–100, scaled)
+WorkingDir: "/home/user/project"  →  repo/worktree hint, not a file target
+Branch: "feat/auth"               →  —
 ```
 
 **UFO visual encoding — model family, tier, and thinking:**
@@ -210,11 +236,12 @@ a lightweight Codex model. No text needed.
 | Standard thinking | Dome has a soft inner glow (family color at 30% opacity) |
 | Extended thinking (high token burn) | Dome pulses brighter (family color at 60%, `sd-pulse` animation) |
 
-Thinking intensity is derived from agent-racer's burn rate — high `burnRatePerMinute`
-with `activity: Thinking` = extended thinking. The dome acts like a brain activity
-indicator: dark when idle, glowing when reasoning, pulsing when deep in thought.
+Thinking intensity is derived from the session's activity and token output rate — high
+output token accumulation with `Activity: "working"` = extended thinking. The dome acts
+like a brain activity indicator: dark when idle, glowing when reasoning, pulsing when
+deep in thought.
 
-*Parsing model tier from agent-racer's `model` field:*
+*Parsing model tier from agentwatch's `SessionState.Model` field:*
 ```go
 func tierFromModel(model string) string {
     lower := strings.ToLower(model)
@@ -237,12 +264,12 @@ func tierFromModel(model string) string {
 ```
 
 **Activity → Mode mapping:**
-- `Thinking`, `ToolUse` → `"work"` (parked on target building with tractor beam)
-- `Waiting`, `Idle` → `"idle"`
-- `Errored` → `"error"`
+- `"working"` → `"work"` (parked on target building with tractor beam)
+- `"waiting"`, `"idle"` → `"idle"`
+- `"terminal"` → `"error"` (if unexpected) or removal
 - Transition between confident targets → `"fly"` animation
 
-**Agent → Building mapping:** agent-racer provides `workingDir` and `currentTool`, but
+**Agent → Building mapping:** agentwatch provides `WorkingDir` and `CurrentTool`, but
 does not currently provide a specific file path. Agent-city therefore treats location as
 a confidence-scored signal, not truth:
 
@@ -267,8 +294,8 @@ Resolution strategy:
 4. **No reliable match** — keep the agent visible in the roster and optionally at the
    city edge rather than pretending it is working on a specific building.
 
-**Future:** evaluate extracting agent-racer's `internal/` packages into a shared
-`pkg/` library, or running agent-racer's monitor in-process. Details TBD.
+**Future:** evaluate contributing a `Source` implementation back to agentwatch that
+exposes agent-city dispatch metadata (role, scope, budget) alongside the session state.
 
 ### Layout Engine (`internal/layout/`)
 
@@ -394,8 +421,8 @@ DELETE /api/agents/{id}        — Phase 2: kill agent session + clean worktree
 WS     /ws                     — real-time updates (city state to browser)
 ```
 
-Agent *detection* is handled upstream by agent-racer. Agent *spawning* is Phase 2 — agent-city
-shells out to create worktrees + tmux windows + Claude Code sessions.
+Agent *detection* is handled in-process by the agentwatch monitor. Agent *spawning* is
+Phase 2 — agent-city shells out to create worktrees + tmux windows + Claude Code sessions.
 
 ### WebSocket Protocol (agent-city → browser)
 
@@ -424,41 +451,55 @@ shells out to create worktrees + tmux windows + Claude Code sessions.
 {"type": "select", "buildingId": "src/api/schema.ts"}
 ```
 
-### Upstream: agent-racer WebSocket (agent-racer → agent-city)
+### Upstream: agentwatch API (in-process)
 
-Agent-city connects as a client to agent-racer's WS at `ws://localhost:8080/ws`.
-Messages follow agent-racer's protocol (`~/Projects/agent-racer/backend/internal/ws/protocol.go`):
+Agent-city uses agentwatch's in-process Go API — there is no network protocol between
+agent-city and the agent monitor. Data flows through two complementary interfaces:
 
-```jsonc
-// Snapshot (on connect) — all active sessions
-{"type": "snapshot", "seq": 0, "payload": {
-  "sessions": [
-    {
-      "id": "claude:session-uuid",
-      "source": "claude",
-      "activity": "tool_use",
-      "currentTool": "Edit",
-      "workingDir": "/home/user/project",
-      "branch": "main",
-      "tokensUsed": 45000,
-      "maxContextTokens": 1000000,
-      "contextUtilization": 0.045,
-      "tmuxTarget": "main:2.0",
-      "model": "claude-opus-4-5-20251101"
-    }
-  ],
-  "sourceHealth": [{"source": "claude", "status": "healthy"}]
-}}
+**Pull API — `Monitor.Snapshot()`:**
+Returns a `[]session.SessionState` deep copy of all tracked sessions. Thread-safe,
+callable at any time. Used for initial state population and on-demand reads.
 
-// Delta (on change) — incremental updates
-{"type": "delta", "seq": 1, "payload": {
-  "updates": [/* changed SessionState objects */],
-  "removed": ["claude:old-session"]
-}}
+**Push API — `monitor.EventSink`:**
+Agent-city implements `monitor.EventSink` to receive events after each poll cycle:
 
-// Completion (immediate)
-{"type": "completion", "seq": 2, "payload": {/* completed session */}}
+```go
+// monitor.Event envelope
+type Event struct {
+    Seq       uint64                    // monotonically increasing
+    At        time.Time
+    Type      EventType                 // "snapshot" | "delta" | "lifecycle" | "health"
+    Sessions  []session.SessionState    // full state (snapshot events)
+    Updates   []session.SessionState    // changed sessions (delta events)
+    Removed   []string                  // removed session IDs (delta events)
+    Lifecycle *session.LifecycleEvent   // discovered/updated/terminal/stale/resumed/removed
+    Health    *Health                   // per-source health status changes
+}
 ```
+
+**`session.SessionState` fields used by agent-city:**
+
+```go
+type SessionState struct {
+    ID                 string           // unique session identifier
+    Source             string           // "claude" | "codex" | "gemini"
+    Activity           Activity         // "idle" | "working" | "waiting" | "terminal"
+    Lifecycle          LifecycleState   // "active" | "terminal"
+    Model              string           // e.g. "claude-opus-4-6"
+    CurrentTool        string           // e.g. "Edit", "Bash"
+    WorkingDir         string           // agent's working directory
+    Branch             string           // git branch if detectable
+    ContextTokens      int
+    MaxContextTokens   int
+    ContextUtilization float64          // 0.0–1.0
+    MessageCount       int
+    ToolCallCount      int
+    Subagents          []SubagentState  // nested agent sessions
+}
+```
+
+**Source health:** `Monitor.Health()` returns per-source health (healthy/degraded/failed)
+so agent-city can show source status in the HUD without needing a separate health endpoint.
 
 ---
 
@@ -726,12 +767,12 @@ agent-city/
   DESIGN.md
 ```
 
-Depends on a running agent-racer server (see `~/Projects/agent-racer`).
+Depends on `github.com/mrf/agentwatch` (Go library, imported via `go.mod`).
 
 ### Demo Mode
 
 `./agent-city --demo` starts with a synthetic city and simulated agents for frontend
-development without requiring a real repo or agent-racer. Generates:
+development without requiring a real repo or live agent sessions. Generates:
 
 - 5 districts, ~30 buildings with randomized LOC/coverage/language/status
   (matching the prototype's data from sketch-A-v2.jsx)
@@ -755,7 +796,7 @@ no server-side state — purely local.
 
 **Phase 1 — Visualization.** See the city. A live isometric view of a codebase with agents
 moving through it. Passive — you watch, you don't command. This validates the rendering,
-layout engine, agent-racer integration, and the core "codebase as city" metaphor.
+layout engine, agentwatch integration, and the core "codebase as city" metaphor.
 
 **Phase 2 — Orchestration.** Run the city. The city becomes a control surface where dispatching
 agents to work on code feels like playing SimCity, not typing into a chat window. Lasso
@@ -782,8 +823,8 @@ You respond by dispatching more agents or reassigning. The chat interface become
 
 Phase 1 should prove the live city without taking control of the user's machine. The
 usable MVP is: repo scan → stable city layout → keyboard selection → details panel →
-agent-racer roster → confidence-scored agent locations. Everything else is polish or
-Phase 2.
+agentwatch session roster → confidence-scored agent locations. Everything else is polish
+or Phase 2.
 
 ### P1.1 — Skeleton
 Go binary serving embedded static files. Demo mode with synthetic city data. Repo scanner
@@ -799,11 +840,12 @@ toggleable roads. Unknown coverage/test state renders as unknown, not healthy.
 Keyboard: `R` toggle roads, `N` toggle labels, `{`/`}` jump districts.
 
 ### P1.3 — Agent Display
-Agent-racer WS client (connect, auth, receive sessions). Map sessions to city agents.
-Agent roster, activity log, and UFO rendering with location confidence: solid beam for
-exact targets, softer/dotted beam for inferred file targets, district hover for coarse
-locations, roster-only/edge placement for unknown locations. Keyboard: `1`–`9` jump to
-agent, `G`/`Shift+G` cycle agents, `[`/`]` focus panels, `I` inspect agent.
+Agentwatch monitor setup (create sources, configure `EventSink` bridge, start `Run` loop).
+Map `session.SessionState` to city agents. Agent roster, activity log, and UFO rendering
+with location confidence: solid beam for exact targets, softer/dotted beam for inferred
+file targets, district hover for coarse locations, roster-only/edge placement for unknown
+locations. Keyboard: `1`–`9` jump to agent, `G`/`Shift+G` cycle agents, `[`/`]` focus
+panels, `I` inspect agent.
 
 ### P1.4 — Visual Polish
 HUD matching the prototype's style but with production legibility. Building details
@@ -865,8 +907,8 @@ Dispatch button pressed
   → agent-city backend receives dispatch command
   → spawns Claude Code session in a new worktree + tmux window
   → session targets the selected files with the chosen role as prompt
-  → agent-racer detects the new session passively (JSONL discovery)
-  → agent-city receives the new session via agent-racer WS
+  → agentwatch monitor detects the new session on next poll (JSONL discovery)
+  → EventSink delivers the new session to agent-city
   → UFO appears in the city, flies to target building, begins work
 ```
 
@@ -922,7 +964,7 @@ flash their status pips/shapes.
 
 ### P2.5 — Merge & Completion
 
-When an agent finishes (agent-racer reports `Complete` activity):
+When an agent finishes (agentwatch reports `Lifecycle: "terminal"`):
 
 1. UFO tractor beam retracts, UFO rises above the building
 2. Building gets a **"ready to merge"** indicator — green checkmark badge on roof
@@ -941,8 +983,8 @@ When an agent finishes (agent-racer reports `Complete` activity):
   manually or dispatch a new agent
 
 **Failed agents:**
-- If agent-racer reports `Errored`, the UFO's portholes blink red
-- Right panel shows the error details (from `SessionState.lastAssistantText`)
+- If agentwatch reports an unexpected terminal state, the UFO's portholes blink red
+- Right panel shows the error details (from the lifecycle event's reason)
 - User can: retry (re-dispatch same scope+role), dismiss (kill + clean worktree),
   or inspect (jump to the tmux window via `tmuxTarget`)
 
@@ -1009,7 +1051,7 @@ that warrants background notification).
 | Misleading inferred agent locations | Carry `locationConfidence` through the data model. Render inferred and district-level locations differently from exact targets. |
 | Unknown test/coverage data looks healthy | Use explicit `unknown` status and neutral rendering. Never default missing data to `ok`. |
 | Dense prototype HUD is hard to read in daily use | Keep the style, but raise production font sizes, declutter labels by zoom/selection, and make rails collapsible/resizable. |
-| Agent-racer dependency | Agent-racer must be running. Degrade gracefully (show city without agents). Demo mode with synthetic agents for development without agent-racer. |
+| Agentwatch pre-release API | Agentwatch is pre-release — API may change. Pin to a specific commit in `go.mod`. Wrap agentwatch types behind an internal adapter so API changes are localized to `internal/agents/monitor.go`. |
 | Large repos (10k+ files) | LOD system + viewport culling + `--max-depth` flag |
 | No CSS offset-path in Canvas | Parametric bezier: `B(t) = (1-t)²P₀ + 2(1-t)tP₁ + t²P₂` |
 | WebSocket disconnects | Full snapshot on reconnect; exponential backoff (1s→30s cap) |
@@ -1020,7 +1062,7 @@ that warrants background notification).
 |------|------------|
 | Spawning agents is destructive (creates worktrees, tmux windows, burns tokens) | Dispatch preview shows exact command + cost estimate before confirming. Undo = kill session + clean worktree. |
 | Overlapping agent scopes cause merge conflicts | Warn during dispatch if selected files overlap an active agent's scope. Show dependency highlighting. |
-| Agent sessions are opaque — hard to know what they're actually doing | Agent-racer provides activity state, current tool, token burn rate. City shows this as tractor beam intensity, progress bar, tool name in roster. |
+| Agent sessions are opaque — hard to know what they're actually doing | Agentwatch provides activity state, current tool, context utilization, and message/tool-call counts. City shows this as tractor beam intensity, progress bar, tool name in roster. |
 | Cost control — easy to accidentally burn budget | Show token burn rate per agent, cumulative spend, budget caps in dispatch. Auto-pause agents approaching budget limit. |
 | Prompt quality — dispatch roles need to produce good agent behavior | Start with well-tested prompt templates per role. `custom...` option for free-form. Iterate on templates based on outcomes. |
 
