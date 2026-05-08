@@ -73,6 +73,8 @@ export function App(): JSX.Element {
   const selectedBuildingId = useUiStore((s) => s.selectedBuildingId);
   const setCursor = useUiStore((s) => s.setCursor);
   const selectBuilding = useUiStore((s) => s.selectBuilding);
+  const setCamera = useUiStore((s) => s.setCamera);
+  const setZoom = useUiStore((s) => s.setZoom);
 
   // Keyboard navigation: cursor, selection, camera, toggles
   useCityKeyboard(rendererRef);
@@ -112,6 +114,8 @@ export function App(): JSX.Element {
 
     const resize = () => {
       renderer.resize(window.innerWidth, window.innerHeight);
+      setCamera(renderer.camera.ox, renderer.camera.oy);
+      setZoom(renderer.camera.scale);
     };
     resize();
     window.addEventListener('resize', resize);
@@ -122,7 +126,7 @@ export function App(): JSX.Element {
     return () => {
       window.removeEventListener('resize', resize);
     };
-  }, [setCity]);
+  }, [setCity, setCamera, setZoom]);
 
   // Push city state and UI flags into renderer when they change
   useEffect(() => {
