@@ -66,11 +66,20 @@ export interface ActivityEvent {
   severity: string;
 }
 
+export type Confidence = 'exact' | 'inferred' | 'weak';
+
+export interface Road {
+  fromId: string;
+  toId: string;
+  weight: number;
+  confidence: Confidence;
+}
+
 export interface CityState {
   repoInfo: RepoInfo;
   districts: District[];
   buildings: Building[];
-  roads: { fromId: string; toId: string; weight: number; confidence: string }[];
+  roads: Road[];
   agents: Agent[];
   activities: ActivityEvent[];
   stats: RepoStats;

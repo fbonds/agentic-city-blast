@@ -37,7 +37,16 @@ function makeDemoCity(): CityState {
       { id: 'internal/scanner.go', districtId: 'internal', label: 'scanner.go', language: 'go', loc: 200, coverage: -1, status: 'unknown', editing: false, exports: 3, gx: 28, gy: 18, gw: 5, gh: 5, gz: 7 },
       { id: 'internal/tracker.py', districtId: 'internal', label: 'tracker.py', language: 'py', loc: 150, coverage: 0.45, status: 'warn', editing: false, exports: 2, gx: 18, gy: 26, gw: 5, gh: 3, gz: 5 },
     ],
-    roads: [],
+    roads: [
+      { fromId: 'src/canvas/renderer.ts', toId: 'src/canvas/camera.ts',  weight: 1, confidence: 'exact' },
+      { fromId: 'src/api/handlers.go',    toId: 'src/api/server.go',     weight: 2, confidence: 'exact' },
+      { fromId: 'src/api/server.go',      toId: 'internal/layout.go',   weight: 1, confidence: 'inferred' },
+      { fromId: 'src/store/city.ts',      toId: 'src/api/schema.ts',     weight: 1, confidence: 'exact' },
+      { fromId: 'src/store/ui.ts',        toId: 'src/store/city.ts',     weight: 1, confidence: 'exact' },
+      { fromId: 'internal/scanner.go',    toId: 'internal/layout.go',   weight: 1, confidence: 'inferred' },
+      { fromId: 'internal/tracker.py',    toId: 'internal/scanner.go',  weight: 1, confidence: 'weak' },
+      { fromId: 'src/canvas/renderer.ts', toId: 'src/store/city.ts',    weight: 1, confidence: 'weak' },
+    ],
     agents: [],
     activities: [],
     stats: {
@@ -59,7 +68,9 @@ export function App(): JSX.Element {
   const city = useCityStore((s) => s.city);
   const setCity = useCityStore((s) => s.setCity);
   const showLabels = useUiStore((s) => s.showLabels);
+  const showRoads = useUiStore((s) => s.showRoads);
   const cursorBuildingId = useUiStore((s) => s.cursorBuildingId);
+  const selectedBuildingId = useUiStore((s) => s.selectedBuildingId);
   const setCursor = useUiStore((s) => s.setCursor);
   const selectBuilding = useUiStore((s) => s.selectBuilding);
 
@@ -123,6 +134,18 @@ export function App(): JSX.Element {
       rendererRef.current.showLabels = showLabels;
     }
   }, [showLabels]);
+
+  useEffect(() => {
+    if (rendererRef.current) {
+      rendererRef.current.showRoads = showRoads;
+    }
+  }, [showRoads]);
+
+  useEffect(() => {
+    if (rendererRef.current) {
+      rendererRef.current.selectedBuildingId = selectedBuildingId;
+    }
+  }, [selectedBuildingId]);
 
   // Sync cursor building into renderer for highlight drawing
   useEffect(() => {

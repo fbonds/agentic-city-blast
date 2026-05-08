@@ -8,6 +8,7 @@
 import { IsometricCamera } from './IsometricCamera';
 import { drawDistricts } from './DistrictRenderer';
 import { drawBuildings, drawCursorHighlight } from './BuildingRenderer';
+import { drawRoads } from './RoadRenderer';
 import type { CityState } from '../store/cityStore';
 
 // Solarized Dark palette (desaturated) from sd-helpers.jsx
@@ -34,7 +35,9 @@ export class CityRenderer {
   camera: IsometricCamera;
   private city: CityState | null = null;
   showLabels = true;
+  showRoads = false;
   cursorBuildingId: string | null = null;
+  selectedBuildingId: string | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -75,6 +78,11 @@ export class CityRenderer {
 
     // 3. District outlines (back-to-front by gx+gy)
     drawDistricts(ctx, this.camera, this.city.districts);
+
+    // 3b. Roads (ground plane, drawn before buildings so they sit underneath)
+    if (this.showRoads) {
+      drawRoads(ctx, this.camera, this.city.roads, this.city.buildings, this.selectedBuildingId);
+    }
 
     // 4. Buildings (back-to-front by gx+gy for occlusion)
     drawBuildings(ctx, this.camera, this.city.buildings, this.showLabels);
