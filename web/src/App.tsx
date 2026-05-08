@@ -47,8 +47,21 @@ function makeDemoCity(): CityState {
       { fromId: 'internal/tracker.py',    toId: 'internal/scanner.go',  weight: 1, confidence: 'weak' },
       { fromId: 'src/canvas/renderer.ts', toId: 'src/store/city.ts',    weight: 1, confidence: 'weak' },
     ],
-    agents: [],
-    activities: [],
+    agents: [
+      { id: 'ac-001', color: '#4a7a9c', mode: 'writing', task: 'refactor auth middleware', progress: 0.62, modelTier: 'opus' },
+      { id: 'ac-002', color: '#6a8a4a', mode: 'thinking', task: 'fix coverage gap in scanner', progress: 0.15, modelTier: 'sonnet' },
+      { id: 'ac-003', color: '#a9923a', mode: 'running', task: 'run test suite', progress: 0.80, modelTier: 'haiku' },
+      { id: 'ac-004', color: '#9c5070', mode: 'waiting', task: 'waiting for CI', progress: 1.0, modelTier: 'sonnet' },
+      { id: 'ac-005', color: '#a14a48', mode: 'error', task: 'add OpenAPI schema', progress: 0.30, modelTier: 'haiku', errorMsg: 'typecheck failed' },
+    ],
+    activities: [
+      { ts: new Date(Date.now() - 5000).toISOString(), who: 'ac-001', message: 'extracted AuthMiddleware into pkg/auth', color: '#4a7a9c', severity: 'success' },
+      { ts: new Date(Date.now() - 12000).toISOString(), who: 'ac-003', message: 'all 142 tests pass', color: '#a9923a', severity: 'success' },
+      { ts: new Date(Date.now() - 28000).toISOString(), who: 'ac-005', message: 'typecheck failed: missing type annotation', color: '#a14a48', severity: 'error' },
+      { ts: new Date(Date.now() - 45000).toISOString(), who: 'ac-002', message: 'reading internal/scanner.go', color: '#6a8a4a', severity: 'info' },
+      { ts: new Date(Date.now() - 90000).toISOString(), who: 'ac-001', message: 'created pkg/auth/middleware.go', color: '#4a7a9c', severity: 'info' },
+      { ts: new Date(Date.now() - 120000).toISOString(), who: 'ac-004', message: 'pushed branch, waiting for CI', color: '#9c5070', severity: 'warn' },
+    ],
     stats: {
       fileCount: 10,
       totalLoc: 1840,

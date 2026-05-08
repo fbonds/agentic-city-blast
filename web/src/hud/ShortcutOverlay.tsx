@@ -44,6 +44,15 @@ const CATEGORIES: ShortcutCategory[] = [
     ],
   },
   {
+    title: 'Agents',
+    entries: [
+      { keys: ['1–9'], label: 'Jump to agent N' },
+      { keys: ['G'], label: 'Next agent' },
+      { keys: ['Shift+G'], label: 'Prev agent' },
+      { keys: ['I'], label: 'Inspect agent' },
+    ],
+  },
+  {
     title: 'Focus Zones',
     entries: [
       { keys: ['['], label: 'Left panel' },

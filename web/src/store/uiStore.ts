@@ -22,6 +22,10 @@ interface UiStore {
   showShortcutOverlay: boolean;
   highContrast: boolean;
 
+  // Agent focus & inspection
+  focusedAgentIndex: number | null;
+  inspectedAgentId: string | null;
+
   selectBuilding: (id: string | null) => void;
   setCursor: (id: string | null) => void;
   setFocusZone: (zone: FocusZone) => void;
@@ -32,6 +36,8 @@ interface UiStore {
   toggleMinimap: () => void;
   toggleShortcutOverlay: () => void;
   toggleHighContrast: () => void;
+  setFocusedAgentIndex: (index: number | null) => void;
+  setInspectedAgentId: (id: string | null) => void;
 }
 
 export const useUiStore = create<UiStore>((set) => ({
@@ -50,6 +56,9 @@ export const useUiStore = create<UiStore>((set) => ({
   showShortcutOverlay: false,
   highContrast: false,
 
+  focusedAgentIndex: null,
+  inspectedAgentId: null,
+
   selectBuilding: (id) => set({ selectedBuildingId: id }),
   setCursor: (id) => set({ cursorBuildingId: id }),
   setFocusZone: (zone) => set({ focusZone: zone }),
@@ -60,4 +69,6 @@ export const useUiStore = create<UiStore>((set) => ({
   toggleMinimap: () => set((s) => ({ showMinimap: !s.showMinimap })),
   toggleShortcutOverlay: () => set((s) => ({ showShortcutOverlay: !s.showShortcutOverlay })),
   toggleHighContrast: () => set((s) => ({ highContrast: !s.highContrast })),
+  setFocusedAgentIndex: (index) => set({ focusedAgentIndex: index }),
+  setInspectedAgentId: (id) => set({ inspectedAgentId: id }),
 }));

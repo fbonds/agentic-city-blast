@@ -9,7 +9,7 @@
 import { useEffect, useRef } from 'react';
 import { useCityStore } from '../store/cityStore';
 import { useUiStore } from '../store/uiStore';
-import type { Building } from '../store/cityStore';
+import type { Building, Agent } from '../store/cityStore';
 import type { CityRenderer } from '../canvas/CityRenderer';
 import type { IsometricCamera } from '../canvas/IsometricCamera';
 
@@ -101,6 +101,7 @@ export function useCityKeyboard(
 ): void {
   const buildings = useCityStore((s) => s.city.buildings);
   const districts = useCityStore((s) => s.city.districts);
+  const agents = useCityStore((s) => s.city.agents);
   const cursorBuildingId = useUiStore((s) => s.cursorBuildingId);
   const setCursor = useUiStore((s) => s.setCursor);
   const selectBuilding = useUiStore((s) => s.selectBuilding);
@@ -114,10 +115,20 @@ export function useCityKeyboard(
   const toggleShortcutOverlay = useUiStore((s) => s.toggleShortcutOverlay);
   const toggleHighContrast = useUiStore((s) => s.toggleHighContrast);
   const showShortcutOverlay = useUiStore((s) => s.showShortcutOverlay);
+  const focusedAgentIndex = useUiStore((s) => s.focusedAgentIndex);
+  const setFocusedAgentIndex = useUiStore((s) => s.setFocusedAgentIndex);
+  const inspectedAgentId = useUiStore((s) => s.inspectedAgentId);
+  const setInspectedAgentId = useUiStore((s) => s.setInspectedAgentId);
 
   // Ref holds latest reactive state so the keydown handler stays stable
-  const stateRef = useRef({ buildings, districts, cursorBuildingId, focusZone, showShortcutOverlay });
-  stateRef.current = { buildings, districts, cursorBuildingId, focusZone, showShortcutOverlay };
+  const stateRef = useRef({
+    buildings, districts, agents, cursorBuildingId, focusZone,
+    showShortcutOverlay, focusedAgentIndex, inspectedAgentId,
+  });
+  stateRef.current = {
+    buildings, districts, agents, cursorBuildingId, focusZone,
+    showShortcutOverlay, focusedAgentIndex, inspectedAgentId,
+  };
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -129,8 +140,10 @@ export function useCityKeyboard(
       const renderer = rendererRef.current;
       if (!renderer) return;
       const cam = renderer.camera;
-      const { buildings, districts, cursorBuildingId, focusZone, showShortcutOverlay } =
-        stateRef.current;
+      const {
+        buildings, districts, agents, cursorBuildingId, focusZone,
+        showShortcutOverlay, focusedAgentIndex, inspectedAgentId,
+      } = stateRef.current;
 
       if (e.key === '?') {
         toggleShortcutOverlay();
@@ -156,6 +169,16 @@ export function useCityKeyboard(
       if (e.key === ']') { setFocusZone('right'); e.preventDefault(); return; }
 
       if (e.key === 'Escape') {
+        if (inspectedAgentId) {
+          setInspectedAgentId(null);
+          e.preventDefault();
+          return;
+        }
+        if (focusedAgentIndex !== null) {
+          setFocusedAgentIndex(null);
+          e.preventDefault();
+          return;
+        }
         if (focusZone !== 'city') {
           setFocusZone('city');
         } else {
@@ -170,6 +193,56 @@ export function useCityKeyboard(
         setFocusZone('city');
         e.preventDefault();
         return;
+      }
+
+      // --- Agent navigation (available in all focus zones) ---
+
+      // 1-9: jump to agent by position
+      const digit = parseInt(e.key, 10);
+      if (!isNaN(digit) && digit >= 1 && digit <= 9 && agents.length > 0) {
+        const idx = digit - 1;
+        if (idx < agents.length) {
+          setFocusedAgentIndex(idx);
+          setInspectedAgentId(null);
+          e.preventDefault();
+          return;
+        }
+      }
+
+      // G / Shift+G: cycle through agents
+      if (e.key === 'g' || e.key === 'G') {
+        if (agents.length === 0) return;
+        if (e.shiftKey) {
+          // Shift+G: previous agent
+          const prev = focusedAgentIndex === null
+            ? agents.length - 1
+            : (focusedAgentIndex - 1 + agents.length) % agents.length;
+          setFocusedAgentIndex(prev);
+        } else {
+          // G: next agent
+          const next = focusedAgentIndex === null
+            ? 0
+            : (focusedAgentIndex + 1) % agents.length;
+          setFocusedAgentIndex(next);
+        }
+        setInspectedAgentId(null);
+        e.preventDefault();
+        return;
+      }
+
+      // I: inspect focused/selected agent (toggle)
+      if (e.key === 'i' || e.key === 'I') {
+        if (focusedAgentIndex !== null && focusedAgentIndex < agents.length) {
+          const agent = agents[focusedAgentIndex];
+          if (inspectedAgentId === agent.id) {
+            setInspectedAgentId(null);
+          } else {
+            setInspectedAgentId(agent.id);
+            setFocusZone('right');
+          }
+          e.preventDefault();
+          return;
+        }
       }
 
       // Only city-mode keys below
@@ -279,6 +352,7 @@ export function useCityKeyboard(
     setZoom, setCamera,
     toggleRoads, toggleLabels, toggleMinimap,
     toggleShortcutOverlay, toggleHighContrast,
+    setFocusedAgentIndex, setInspectedAgentId,
     rendererRef,
   ]);
 }

@@ -27,12 +27,15 @@ export interface Building {
   gz: number;
 }
 
+export type ModelTier = 'opus' | 'sonnet' | 'haiku' | 'unknown';
+
 export interface Agent {
   id: string;
   color: string;
   mode: string;
   task: string;
   progress: number;
+  modelTier?: ModelTier;
   targetId?: string;
   locationConfidence?: string;
   fromId?: string;

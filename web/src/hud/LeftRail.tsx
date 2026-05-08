@@ -1,9 +1,14 @@
 import type { CSSProperties } from 'react';
 import { useCityStore } from '../store/cityStore';
-import type { Agent } from '../store/cityStore';
-import { sol, hudBase, TOP_BAR_H, BOTTOM_STRIP_H } from './palette';
+import { useUiStore } from '../store/uiStore';
+import type { Agent, ModelTier } from '../store/cityStore';
+import { sol, hudBase, tierColor, modeColor, TOP_BAR_H, BOTTOM_STRIP_H } from './palette';
 
 const RAIL_W = 200;
+
+const TIER_LABELS: Record<ModelTier, string> = {
+  opus: 'OPS', sonnet: 'SNT', haiku: 'HKU', unknown: '???',
+};
 
 const S: Record<string, CSSProperties> = {
   rail: {
@@ -35,12 +40,19 @@ const S: Record<string, CSSProperties> = {
   agentRow: {
     padding: '5px 10px 4px',
     borderBottom: `1px solid ${sol.base03}`,
+    cursor: 'default',
   },
   agentTop: {
     display: 'flex',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     marginBottom: 3,
+  },
+  keyHint: {
+    color: sol.base01,
+    fontSize: 9,
+    minWidth: 10,
+    flexShrink: 0,
   },
   dot: {
     width: 7,
@@ -56,16 +68,31 @@ const S: Record<string, CSSProperties> = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap' as const,
   },
-  mode: {
-    color: sol.base00,
+  tierBadge: {
+    fontSize: 8,
+    padding: '1px 3px',
+    borderRadius: 2,
+    fontWeight: 700,
+    letterSpacing: '0.05em',
+    flexShrink: 0,
+  },
+  modeLine: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 3,
+  },
+  modeLabel: {
     fontSize: 10,
+    fontWeight: 600,
+    flexShrink: 0,
   },
   task: {
     color: sol.base0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap' as const,
-    marginBottom: 4,
+    flex: 1,
     fontSize: 10,
   },
   trackOuter: {
@@ -82,16 +109,35 @@ const S: Record<string, CSSProperties> = {
   },
 };
 
-function AgentRow({ agent }: { agent: Agent }): JSX.Element {
+function AgentRow({ agent, index, focused }: { agent: Agent; index: number; focused: boolean }): JSX.Element {
   const pct = Math.max(0, Math.min(1, agent.progress ?? 0));
+  const tc = tierColor(agent.modelTier);
+  const mc = modeColor(agent.mode);
+  const rowStyle: CSSProperties = focused
+    ? { ...S.agentRow, background: `${sol.base01}55`, borderLeft: `2px solid ${sol.blue}`, paddingLeft: 8 }
+    : S.agentRow;
+
   return (
-    <div style={S.agentRow}>
+    <div style={rowStyle}>
       <div style={S.agentTop}>
+        <span style={S.keyHint}>{index < 9 ? index + 1 : ''}</span>
         <span style={{ ...S.dot, background: agent.color || sol.base00 }} />
         <span style={S.agentId}>{agent.id}</span>
-        <span style={S.mode}>{agent.mode}</span>
+        <span
+          style={{
+            ...S.tierBadge,
+            color: tc,
+            background: `${tc}22`,
+            border: `1px solid ${tc}55`,
+          }}
+        >
+          {TIER_LABELS[agent.modelTier ?? 'unknown']}
+        </span>
       </div>
-      {agent.task && <div style={S.task}>{agent.task}</div>}
+      <div style={S.modeLine}>
+        <span style={{ ...S.modeLabel, color: mc }}>{agent.mode || 'idle'}</span>
+        {agent.task && <span style={S.task}>{agent.task}</span>}
+      </div>
       <div style={S.trackOuter}>
         <div
           style={{
@@ -112,6 +158,7 @@ function AgentRow({ agent }: { agent: Agent }): JSX.Element {
 
 export function LeftRail(): JSX.Element {
   const agents = useCityStore((s) => s.city.agents);
+  const focusedAgentIndex = useUiStore((s) => s.focusedAgentIndex);
 
   return (
     <div style={S.rail}>
@@ -120,7 +167,9 @@ export function LeftRail(): JSX.Element {
         {agents.length === 0 ? (
           <div style={S.empty}>no active agents</div>
         ) : (
-          agents.map((a) => <AgentRow key={a.id} agent={a} />)
+          agents.map((a, i) => (
+            <AgentRow key={a.id} agent={a} index={i} focused={focusedAgentIndex === i} />
+          ))
         )}
       </div>
     </div>

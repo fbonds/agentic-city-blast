@@ -51,6 +51,42 @@ export function coverageColor(cov: number): string {
   return sol.red;
 }
 
+/** Map model tier to a display color. */
+export function tierColor(tier: string | undefined): string {
+  switch (tier) {
+    case 'opus':   return sol.violet;
+    case 'sonnet': return sol.blue;
+    case 'haiku':  return sol.cyan;
+    default:       return sol.base00;
+  }
+}
+
+/** Map agent mode to a display color. */
+export function modeColor(mode: string): string {
+  switch (mode) {
+    case 'thinking':  return sol.yellow;
+    case 'writing':   return sol.green;
+    case 'reading':   return sol.blue;
+    case 'running':   return sol.orange;
+    case 'waiting':   return sol.base00;
+    case 'error':     return sol.red;
+    case 'done':      return sol.cyan;
+    default:          return sol.base0;
+  }
+}
+
+/** Map event severity to a display color. */
+export function severityColor(severity: string): string {
+  switch (severity) {
+    case 'error':   return sol.red;
+    case 'warn':    return sol.yellow;
+    case 'info':    return sol.blue;
+    case 'success': return sol.green;
+    case 'debug':   return sol.base00;
+    default:        return sol.base0;
+  }
+}
+
 /** Map language string to a display color. */
 export function langColor(lang: string): string {
   switch (lang) {
