@@ -38,7 +38,7 @@ func (s *Server) WithWSHandler(h http.HandlerFunc) *Server {
 // Register mounts all API routes onto mux.
 func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/state", s.handleGetState)
-	mux.HandleFunc("GET /api/buildings/{id}", s.handleGetBuilding)
+	mux.HandleFunc("GET /api/buildings/{id...}", s.handleGetBuilding)
 	if s.wsHandler != nil {
 		mux.HandleFunc("GET /ws", s.wsHandler)
 	} else {
