@@ -75,9 +75,13 @@ function makeDemoCity(): CityState {
   };
 }
 
+/** Minimum pixel movement before a mousedown is considered a drag (not a click). */
+const DRAG_THRESHOLD = 4;
+
 export function App(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<CityRenderer | null>(null);
+  const dragRef = useRef<{ active: boolean; hasDragged: boolean; totalDist: number } | null>(null);
   const city = useCityStore((s) => s.city);
   const setCity = useCityStore((s) => s.setCity);
   const showLabels = useUiStore((s) => s.showLabels);
@@ -100,6 +104,9 @@ export function App(): JSX.Element {
   // Click handler: agents first (they render on top), then buildings.
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
+      // Suppress click if the mouse moved enough to count as a drag
+      if (dragRef.current?.hasDragged) return;
+
       const renderer = rendererRef.current;
       if (!renderer) return;
       const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
@@ -157,12 +164,43 @@ export function App(): JSX.Element {
     };
     canvas.addEventListener('wheel', onWheel, { passive: false });
 
+    // Mouse drag-to-pan
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      dragRef.current = { active: true, hasDragged: false, totalDist: 0 };
+      canvas.style.cursor = 'grab';
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      const drag = dragRef.current;
+      if (!drag?.active) return;
+      drag.totalDist += Math.hypot(e.movementX, e.movementY);
+      if (!drag.hasDragged && drag.totalDist < DRAG_THRESHOLD) return;
+      drag.hasDragged = true;
+      canvas.style.cursor = 'grabbing';
+      renderer.camera.pan(e.movementX, e.movementY);
+      setCamera(renderer.camera.ox, renderer.camera.oy);
+    };
+
+    const onMouseUp = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      if (dragRef.current) dragRef.current.active = false;
+      canvas.style.cursor = 'default';
+    };
+
+    canvas.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+
     // Load demo city
     setCity(makeDemoCity());
 
     return () => {
       window.removeEventListener('resize', resize);
       canvas.removeEventListener('wheel', onWheel);
+      canvas.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
     };
   }, [setCity, setCamera, setZoom]);
 
