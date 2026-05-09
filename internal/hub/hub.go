@@ -41,6 +41,9 @@ type Hub struct {
 	unregister chan *client
 	notifyCh   chan struct{}
 	prevJSON   []byte
+	// quit is closed by Run when its context is cancelled, so that client
+	// goroutines can exit cleanly rather than blocking on unregister.
+	quit chan struct{}
 }
 
 // New creates a Hub backed by the given State.
@@ -52,6 +55,7 @@ func New(s *State) *Hub {
 		register:   make(chan *client),
 		unregister: make(chan *client),
 		notifyCh:   make(chan struct{}, 1),
+		quit:       make(chan struct{}),
 	}
 }
 
@@ -91,6 +95,13 @@ func (h *Hub) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			// Signal client goroutines and close all send channels.
+			// writePump sends a CloseMessage when its channel is closed.
+			close(h.quit)
+			for c := range h.clients {
+				delete(h.clients, c)
+				close(c.send)
+			}
 			return
 
 		case c := <-h.register:
@@ -208,7 +219,10 @@ type client struct {
 // accepted but not yet acted on.
 func (c *client) readPump() {
 	defer func() {
-		c.hub.unregister <- c
+		select {
+		case c.hub.unregister <- c:
+		case <-c.hub.quit:
+		}
 		c.conn.Close()
 	}()
 	c.conn.SetReadLimit(maxMessageSize)
