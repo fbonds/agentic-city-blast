@@ -9,7 +9,8 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
-	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/mferree/agent-city/internal/api"
@@ -22,6 +23,9 @@ func main() {
 	demo := flag.Bool("demo", false, "Run in demo mode with synthetic city data")
 	addr := flag.String("addr", ":8080", "HTTP listen address")
 	flag.Parse()
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	mux := http.NewServeMux()
 
@@ -37,7 +41,7 @@ func main() {
 	}
 
 	h := hub.New(cityState)
-	go h.Run(context.Background())
+	go h.Run(ctx)
 
 	api.New(cityState).WithWSHandler(h.ServeWS).Register(mux)
 
@@ -48,10 +52,26 @@ func main() {
 		mux.Handle("/", http.FileServer(http.FS(distFS)))
 	}
 
-	log.Printf("agent-city listening on %s", *addr)
-	if err := http.ListenAndServe(*addr, mux); err != nil {
-		fmt.Fprintf(os.Stderr, "server error: %v\n", err)
-		os.Exit(1)
+	srv := &http.Server{
+		Addr:    *addr,
+		Handler: mux,
+	}
+
+	go func() {
+		log.Printf("agent-city listening on %s", *addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server error: %v", err)
+		}
+	}()
+
+	<-ctx.Done()
+	log.Printf("shutting down...")
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("shutdown error: %v", err)
 	}
 }
 
