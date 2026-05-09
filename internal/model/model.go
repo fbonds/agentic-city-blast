@@ -70,6 +70,7 @@ type Agent struct {
 	ToID               string  `json:"toId,omitempty"`               // mode=fly
 	FlyProgress        float64 `json:"flyProgress,omitempty"`        // 0.0–1.0 on bezier
 	ErrorMsg           string  `json:"errorMsg,omitempty"`
+	ModelTier          string  `json:"modelTier,omitempty"`          // "opus" | "sonnet" | "haiku" | "unknown"
 }
 
 // ActivityEvent is an entry in the city's activity log.
