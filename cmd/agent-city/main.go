@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mferree/agent-city/internal/agents"
 	"github.com/mferree/agent-city/internal/api"
 	"github.com/mferree/agent-city/internal/city"
 	"github.com/mferree/agent-city/internal/deps"
@@ -68,6 +69,7 @@ func main() {
 
 	if !*demo {
 		go runWatcher(ctx, *repoPath, buildCfg, cityState, h)
+		agents.StartMonitor(ctx, cityState, h)
 	}
 
 	api.New(cityState).WithWSHandler(h.ServeWS).Register(mux)
