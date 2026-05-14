@@ -120,14 +120,23 @@ export function useCityKeyboard(
   const inspectedAgentId = useUiStore((s) => s.inspectedAgentId);
   const setInspectedAgentId = useUiStore((s) => s.setInspectedAgentId);
 
+  // Phase 2 state
+  const phase2 = useUiStore((s) => s.phase2);
+  const dispatchMode = useUiStore((s) => s.dispatchMode);
+  const commandPaletteOpen = useUiStore((s) => s.commandPaletteOpen);
+  const openDispatch = useUiStore((s) => s.openDispatch);
+  const openCommandPalette = useUiStore((s) => s.openCommandPalette);
+
   // Ref holds latest reactive state so the keydown handler stays stable
   const stateRef = useRef({
     buildings, districts, agents, cursorBuildingId, focusZone,
     showShortcutOverlay, focusedAgentIndex, inspectedAgentId,
+    phase2, dispatchMode, commandPaletteOpen,
   });
   stateRef.current = {
     buildings, districts, agents, cursorBuildingId, focusZone,
     showShortcutOverlay, focusedAgentIndex, inspectedAgentId,
+    phase2, dispatchMode, commandPaletteOpen,
   };
 
   useEffect(() => {
@@ -143,6 +152,7 @@ export function useCityKeyboard(
       const {
         buildings, districts, agents, cursorBuildingId, focusZone,
         showShortcutOverlay, focusedAgentIndex, inspectedAgentId,
+        phase2, dispatchMode, commandPaletteOpen,
       } = stateRef.current;
 
       if (e.key === '?') {
@@ -158,6 +168,18 @@ export function useCityKeyboard(
       }
 
       if (showShortcutOverlay) return;
+
+      // Phase 2: Cmd+K opens command palette
+      if (phase2 && (e.metaKey || e.ctrlKey) && e.key === 'k') {
+        if (!dispatchMode && !commandPaletteOpen) {
+          openCommandPalette();
+        }
+        e.preventDefault();
+        return;
+      }
+
+      // Phase 2 modals own their keyboard — yield all events
+      if (dispatchMode || commandPaletteOpen) return;
 
       const syncCamera = () => {
         setZoom(cam.scale);
@@ -249,6 +271,13 @@ export function useCityKeyboard(
 
       // Only city-mode keys below
       if (focusZone !== 'city') return;
+
+      // Phase 2: D key opens dispatch wizard
+      if (phase2 && (e.key === 'd' || e.key === 'D')) {
+        openDispatch(cursorBuildingId ?? undefined);
+        e.preventDefault();
+        return;
+      }
 
       // --- Camera pan (WASD / arrows) ---
       switch (e.key) {
@@ -349,6 +378,7 @@ export function useCityKeyboard(
     toggleRoads, toggleLabels, toggleMinimap,
     toggleShortcutOverlay, toggleHighContrast,
     setFocusedAgentIndex, setInspectedAgentId,
+    openDispatch, openCommandPalette,
     rendererRef,
   ]);
 }
