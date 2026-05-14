@@ -106,6 +106,33 @@ function applyPatches(doc: unknown, patches: JsonPatchOp[]): unknown {
   return patches.reduce(applyOp, doc);
 }
 
+// ── Connection status ─────────────────────────────────────────────────────────
+
+export type WsStatus = 'connecting' | 'connected' | 'disconnected';
+
+type StatusCallback = (status: WsStatus) => void;
+
+let currentStatus: WsStatus = 'disconnected';
+const statusSubscribers = new Set<StatusCallback>();
+
+function notifyStatus(status: WsStatus): void {
+  currentStatus = status;
+  for (const cb of statusSubscribers) {
+    cb(status);
+  }
+}
+
+/** Get the current WebSocket connection status. */
+export function getWsStatus(): WsStatus {
+  return currentStatus;
+}
+
+/** Subscribe to connection status changes. Returns an unsubscribe function. */
+export function subscribeWsStatus(cb: StatusCallback): () => void {
+  statusSubscribers.add(cb);
+  return () => { statusSubscribers.delete(cb); };
+}
+
 // ── WebSocket connection ───────────────────────────────────────────────────────
 
 const RECONNECT_DELAY_MS = 3_000;
@@ -145,9 +172,11 @@ function connect(): void {
   if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
 
   ws = new WebSocket(wsUrl());
+  notifyStatus('connecting');
 
   ws.onopen = () => {
     console.log('[ws] Connected');
+    notifyStatus('connected');
     if (reconnectTimer !== null) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
@@ -158,6 +187,7 @@ function connect(): void {
 
   ws.onclose = () => {
     ws = null;
+    notifyStatus('disconnected');
     if (!stopped) {
       console.log(`[ws] Disconnected — reconnecting in ${RECONNECT_DELAY_MS}ms`);
       reconnectTimer = setTimeout(connect, RECONNECT_DELAY_MS);
@@ -191,4 +221,5 @@ export function stopWs(): void {
   }
   ws?.close();
   ws = null;
+  notifyStatus('disconnected');
 }

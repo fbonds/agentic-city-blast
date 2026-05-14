@@ -1,4 +1,5 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
+import { useWebSocket } from './hooks/useWebSocket';
 import { CityRenderer } from './canvas/CityRenderer';
 import { hitTestBuildings, hitTestAgents, nearestBuildingToScreen } from './canvas/HitTester';
 import { useAnimationFrame } from './hooks/useAnimationFrame';
@@ -123,6 +124,9 @@ export function App(): JSX.Element {
     },
     [city.agents, city.buildings],
   );
+
+  // WebSocket connection lifecycle — connect on mount, disconnect on unmount
+  useWebSocket();
 
   // Keyboard navigation: cursor, selection, camera, toggles
   useCityKeyboard(rendererRef);
