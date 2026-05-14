@@ -1,18 +1,12 @@
 /**
  * BuildingRenderer — isometric box rendering with language-tinted faces,
- * hidden back edges, floating labels, window dots, status pips, and edit rings.
+ * hidden back edges, floating labels, window dots, and edit rings.
  *
  * Draw order: footprint -> hidden back edges -> base outline ->
  *             side faces (language-tinted) -> roof -> window dots ->
- *             edit rings -> status pip -> label
+ *             edit rings -> label
  *
  * Buildings are sorted back-to-front by (gx + gy) for correct occlusion.
- *
- * Status pips are color-blind safe: shape + color.
- *   ok      = filled circle  (green)
- *   warn    = filled triangle (yellow)
- *   err     = blinking diamond (red)
- *   unknown = hollow square   (base00)
  */
 
 import { IsometricCamera } from './IsometricCamera';
@@ -212,10 +206,7 @@ function drawBuilding(
     drawEditRings(ctx, camera, b, time);
   }
 
-  // --- 8. Status pip (shape + color, color-blind safe) ---
-  drawStatusPip(ctx, camera, b, time);
-
-  // --- 9. Floating label with backing plate ---
+  // --- 8. Floating label with backing plate ---
   if (showLabels) {
     drawLabel(ctx, camera, b);
   }
@@ -336,69 +327,6 @@ function drawWindowDots(
   drawFace(A, B, A2, B2, colsR);
   // Lower-left face (A→D base, A2→D2 roof)
   drawFace(A, D, A2, D2, colsL);
-
-  ctx.globalAlpha = 1;
-  ctx.restore();
-}
-
-/**
- * Draw a status pip at the front roof vertex (A2), offset slightly inward.
- * Shape + color encoding for color-blind safety:
- *   ok      → filled circle  (green)
- *   warn    → filled triangle (yellow)
- *   err     → blinking diamond (red)
- *   unknown → hollow square   (base00)
- */
-function drawStatusPip(
-  ctx: CanvasRenderingContext2D,
-  camera: IsometricCamera,
-  b: Building,
-  time: number,
-): void {
-  if (camera.scale < 0.3) return;
-
-  const A2 = camera.project(b.gx, b.gy, b.gz);
-  const roofCx = camera.project(b.gx + b.gw / 2, b.gy + b.gh / 2, b.gz);
-
-  // Nudge inward ~15% of the way toward the roof center
-  const px = A2[0] + 0.18 * (roofCx[0] - A2[0]);
-  const py = A2[1] + 0.18 * (roofCx[1] - A2[1]);
-
-  const s = Math.max(1.5, camera.scale * 1.5); // half-size
-
-  ctx.save();
-
-  if (b.status === 'ok') {
-    ctx.globalAlpha = 0.6;
-    ctx.fillStyle = SD.green;
-    ctx.beginPath();
-    ctx.arc(px, py, s, 0, Math.PI * 2);
-    ctx.fill();
-  } else if (b.status === 'warn') {
-    ctx.globalAlpha = 0.6;
-    ctx.fillStyle = SD.yellow;
-    ctx.beginPath();
-    ctx.moveTo(px, py - s);
-    ctx.lineTo(px + s * 0.866, py + s * 0.5);
-    ctx.lineTo(px - s * 0.866, py + s * 0.5);
-    ctx.closePath();
-    ctx.fill();
-  } else if (b.status === 'err') {
-    ctx.globalAlpha = 0.2 + 0.5 * Math.abs(Math.sin(time * 0.003));
-    ctx.fillStyle = SD.red;
-    ctx.beginPath();
-    ctx.moveTo(px,     py - s);
-    ctx.lineTo(px + s, py);
-    ctx.lineTo(px,     py + s);
-    ctx.lineTo(px - s, py);
-    ctx.closePath();
-    ctx.fill();
-  } else {
-    // unknown: hollow square
-    ctx.strokeStyle = SD.base00;
-    ctx.lineWidth = Math.max(0.8, camera.scale * 0.6);
-    ctx.strokeRect(px - s / 2, py - s / 2, s, s);
-  }
 
   ctx.globalAlpha = 1;
   ctx.restore();
