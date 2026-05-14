@@ -245,7 +245,7 @@ export function useCityKeyboard(
         }
       }
 
-      // --- UI toggles (work in any focus zone) ---
+      // --- UI toggles (global — work in any focus zone) ---
       if (e.key === 'r' || e.key === 'R') { toggleRoads(); e.preventDefault(); return; }
       if (e.key === 'n' || e.key === 'N') { toggleLabels(); e.preventDefault(); return; }
       if (e.key === 'm' || e.key === 'M') { toggleMinimap(); e.preventDefault(); return; }
