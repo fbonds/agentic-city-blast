@@ -6,23 +6,13 @@ binary. Agents monitored via the `agentwatch` library (in-process, no sidecar ne
 ## Quick orientation
 
 ```
-cmd/agent-city/main.go          entry point, wire services, embed frontend
-internal/
-  model/model.go                core data types (CityState, Building, Agent, …)
-  repo/                         Git tree walk, file watcher (fsnotify, 500ms debounce)
-  deps/                         regex import extractor → Road edges
-  agents/                       agentwatch monitor setup, session → city-agent mapping
-  layout/                       squarified treemap + shelf packer
-  hub/                          WebSocket hub, state assembly, JSON-patch broadcast
-  api/                          HTTP server, REST handlers, WS upgrade
-web/src/
-  store/                        Zustand: cityStore, uiStore, wsMiddleware
-  canvas/                       rAF render loop, isometric projection, all renderers
-  hud/                          React overlays (TopBar, LeftRail, RightRail, BottomStrip)
-  hooks/                        useCityKeyboard, useCameraControls, useAnimationFrame
-  orchestration/                Phase 2 dispatch UI (not yet active)
-code-sim/                       design reference sketches — read-only, do not modify
+cmd/agent-city/    — entry point, wire services, embed frontend
+internal/          — Go backend packages (model, repo, deps, agents, layout, hub, api)
+web/src/           — React/TypeScript frontend (store, canvas, hud, hooks, orchestration)
+code-sim/          — design reference sketches — read-only, do not modify
 ```
+
+See [DESIGN.md](DESIGN.md) for the full package and frontend structure breakdown.
 
 ## Build & run
 
@@ -32,7 +22,7 @@ go run ./cmd/agent-city --repo=/path/to/repo   # backend on :8080
 cd web && npm run dev                           # Vite dev server on :5173 (proxies /api /ws)
 
 # Full dev via Makefile
-make run            # make build (web + Go) then run binary
+make run            # build (web + Go) then start server
 
 # Individual steps
 make web            # cd web && npm run build
