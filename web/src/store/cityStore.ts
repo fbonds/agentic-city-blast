@@ -114,9 +114,21 @@ const emptyCityState: CityState = {
   ts: 0,
 };
 
+/** Ensure all array fields in CityState are never null. */
+function sanitize(city: CityState): CityState {
+  return {
+    ...city,
+    districts: city.districts ?? [],
+    buildings: city.buildings ?? [],
+    roads: city.roads ?? [],
+    agents: city.agents ?? [],
+    activities: city.activities ?? [],
+  };
+}
+
 export const useCityStore = create<CityStore>((set) => ({
   city: emptyCityState,
-  setCity: (city) => set({ city }),
+  setCity: (city) => set({ city: sanitize(city) }),
   patchCity: (partial) =>
-    set((state) => ({ city: { ...state.city, ...partial } })),
+    set((state) => ({ city: sanitize({ ...state.city, ...partial }) })),
 }));
