@@ -3,7 +3,10 @@ package repo
 import (
 	"bytes"
 	"io"
+	"os"
+	"os/exec"
 	"path"
+	"path/filepath"
 	"strings"
 
 	git "github.com/go-git/go-git/v5"
@@ -120,6 +123,17 @@ var extensionToLanguage = map[string]string{
 //
 // EnableDotGitCommonDir is set so ScanRepo works correctly inside git worktrees.
 func ScanRepo(repoPath string, cfg ScanConfig) ([]model.Building, error) {
+	buildings, err := scanWithGoGit(repoPath, cfg)
+	if err == nil {
+		return buildings, nil
+	}
+	// go-git fails on repos with extensions it doesn't support (e.g.
+	// worktreeConfig). Fall back to git CLI + filesystem reads.
+	return scanWithGitCLI(repoPath, cfg)
+}
+
+// scanWithGoGit uses go-git to walk the HEAD tree and read blob content.
+func scanWithGoGit(repoPath string, cfg ScanConfig) ([]model.Building, error) {
 	r, err := git.PlainOpenWithOptions(repoPath, &git.PlainOpenOptions{
 		DetectDotGit:          true,
 		EnableDotGitCommonDir: true,
@@ -192,6 +206,63 @@ func ScanRepo(repoPath string, cfg ScanConfig) ([]model.Building, error) {
 		}
 
 		// min-LOC filter
+		if loc < cfg.MinLOC {
+			continue
+		}
+
+		buildings = append(buildings, newBuilding(filePath, ext, loc))
+	}
+
+	return buildings, nil
+}
+
+// scanWithGitCLI uses `git ls-files` to enumerate tracked files and reads
+// their content from the working tree. This path handles repos whose config
+// extensions are not supported by go-git (e.g. worktreeConfig).
+func scanWithGitCLI(repoPath string, cfg ScanConfig) ([]model.Building, error) {
+	cmd := exec.Command("git", "ls-files", "-z")
+	cmd.Dir = repoPath
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	files := strings.Split(string(out), "\x00")
+	var buildings []model.Building
+
+	for _, filePath := range files {
+		if filePath == "" {
+			continue
+		}
+
+		if inSkipDir(filePath) {
+			continue
+		}
+
+		if cfg.MaxDepth > 0 && dirDepth(filePath) > cfg.MaxDepth {
+			continue
+		}
+
+		ext := strings.ToLower(path.Ext(filePath))
+		if binaryExtensions[ext] {
+			continue
+		}
+
+		if len(cfg.ExcludeGlobs) > 0 && matchesAnyGlob(filePath, cfg.ExcludeGlobs) {
+			continue
+		}
+
+		absPath := filepath.Join(repoPath, filePath)
+		f, openErr := os.Open(absPath)
+		if openErr != nil {
+			continue
+		}
+		loc, isBinary := countLinesAndSniff(f)
+		f.Close()
+		if isBinary {
+			continue
+		}
+
 		if loc < cfg.MinLOC {
 			continue
 		}
