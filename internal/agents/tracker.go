@@ -82,6 +82,23 @@ func (t *Tracker) UpdateSession(s SessionState) {
 	}
 }
 
+// PurgeAbsent removes any tracked session whose ID is not in knownIDs. This
+// handles sessions that disappear from the agentwatch snapshot without a
+// terminal lifecycle event (e.g. after a crash or forced process cleanup).
+func (t *Tracker) PurgeAbsent(knownIDs map[string]struct{}) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for id, s := range t.sessions {
+		if _, ok := knownIDs[id]; !ok {
+			if s.WorkingDir != "" {
+				delete(t.worktrees, filepath.Clean(s.WorkingDir))
+			}
+			delete(t.sessions, id)
+			delete(t.locations, id)
+		}
+	}
+}
+
 // RemoveSession removes a session from tracking. Called by monitor.go when agentwatch
 // reports a lifecycle removal.
 func (t *Tracker) RemoveSession(id string) {

@@ -280,6 +280,60 @@ func TestSyncTracker_removesStaleSessionsOnWorkingDirChange(t *testing.T) {
 	}
 }
 
+// TestSyncTracker_excludesSiblingDirectory verifies that a session whose
+// WorkingDir shares a common string prefix with repoPath but is NOT a
+// subdirectory is not tracked. The original strings.HasPrefix check
+// incorrectly matched "/home/user/myrepo-sibling" against "/home/user/myrepo".
+func TestSyncTracker_excludesSiblingDirectory(t *testing.T) {
+	tracker := New("/home/user/myrepo")
+
+	sessions := []session.SessionState{
+		{ID: "s1", Source: "claude", Lifecycle: session.LifecycleActive, WorkingDir: "/home/user/myrepo-sibling"},
+	}
+	syncTracker(tracker, sessions, "/home/user/myrepo")
+
+	got := tracker.Agents(nil)
+	if len(got) != 0 {
+		t.Errorf("sibling-directory session should not be tracked under /home/user/myrepo, got %d agents", len(got))
+	}
+}
+
+// TestSessionsToAgents_excludesSiblingDirectory mirrors the above for sessionsToAgents.
+func TestSessionsToAgents_excludesSiblingDirectory(t *testing.T) {
+	sessions := []session.SessionState{
+		{ID: "s1", Source: "claude", Lifecycle: session.LifecycleActive, WorkingDir: "/home/user/myrepo-sibling"},
+	}
+	got := sessionsToAgents(sessions, "/home/user/myrepo")
+	if len(got) != 0 {
+		t.Errorf("sibling-directory session should be excluded, got %d agents", len(got))
+	}
+}
+
+// TestSyncTracker_purgesVanishedSessions verifies that a session which was
+// tracked but then disappears entirely from the agentwatch snapshot is removed.
+// This handles the case where agentwatch cleans up a session without firing a
+// lifecycle event (e.g. after a crash or forced cleanup).
+func TestSyncTracker_purgesVanishedSessions(t *testing.T) {
+	tracker := New("/home/user/myrepo")
+
+	// First sync: s1 is active and tracked.
+	syncTracker(tracker, []session.SessionState{
+		{ID: "s1", Source: "claude", Lifecycle: session.LifecycleActive, WorkingDir: "/home/user/myrepo"},
+	}, "/home/user/myrepo")
+
+	if n := len(tracker.Agents(nil)); n != 1 {
+		t.Fatalf("after first sync: got %d agents, want 1", n)
+	}
+
+	// Second sync: s1 has vanished from the snapshot entirely (no lifecycle event).
+	syncTracker(tracker, []session.SessionState{}, "/home/user/myrepo")
+
+	got := tracker.Agents(nil)
+	if len(got) != 0 {
+		t.Errorf("vanished session should have been purged, got %d agents", len(got))
+	}
+}
+
 func TestAwToSessionState_fieldsMapCorrectly(t *testing.T) {
 	input := session.SessionState{
 		ID:                 "sess-123",

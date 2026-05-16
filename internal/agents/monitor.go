@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mferree/agent-city/internal/hub"
@@ -23,6 +24,12 @@ import (
 	"github.com/mrf/agentwatch/sources/codex"
 	"github.com/mrf/agentwatch/sources/gemini"
 )
+
+// sinkDebounceDelay is the quiet-period after the last agentwatch event before
+// the sink commits a state update. During startup, agentwatch sources fire
+// rapid EventDelta events while resolving session lifecycles; coalescing them
+// prevents a visible burst of phantom agents appearing and then disappearing.
+const sinkDebounceDelay = 300 * time.Millisecond
 
 // StartMonitor configures agentwatch sources (Claude, Codex, Gemini),
 // creates a monitor.Monitor and Tracker, and starts a goroutine that bridges
@@ -57,10 +64,13 @@ func StartMonitor(ctx context.Context, repoPath string, cityState *hub.State, h 
 	// fully initialised.
 	var mon *monitor.Monitor
 
-	sink := monitor.EventSinkFunc(func(_ context.Context, ev monitor.Event) error {
-		if ev.Type != monitor.EventDelta && ev.Type != monitor.EventLifecycle {
-			return nil
-		}
+	var (
+		debounceMu    sync.Mutex
+		debounceTimer *time.Timer
+	)
+
+	// applySnapshot runs after the event stream has quieted for sinkDebounceDelay.
+	applySnapshot := func() {
 		sessions := mon.Snapshot()
 		syncTracker(tracker, sessions, absRepo)
 		curr := cityState.GetState()
@@ -69,6 +79,18 @@ func StartMonitor(ctx context.Context, repoPath string, cityState *hub.State, h 
 		if h != nil {
 			h.Notify()
 		}
+	}
+
+	sink := monitor.EventSinkFunc(func(_ context.Context, ev monitor.Event) error {
+		if ev.Type != monitor.EventDelta && ev.Type != monitor.EventLifecycle {
+			return nil
+		}
+		debounceMu.Lock()
+		if debounceTimer != nil {
+			debounceTimer.Stop()
+		}
+		debounceTimer = time.AfterFunc(sinkDebounceDelay, applySnapshot)
+		debounceMu.Unlock()
 		return nil
 	})
 
@@ -87,6 +109,17 @@ func StartMonitor(ctx context.Context, repoPath string, cityState *hub.State, h 
 		if runErr := mon.Run(ctx); runErr != nil && !errors.Is(runErr, context.Canceled) {
 			slog.Error("agents: monitor stopped unexpectedly", "err", runErr)
 		}
+	}()
+
+	// Cancel any pending debounce timer when the context is done to avoid a
+	// dangling goroutine calling applySnapshot after shutdown.
+	go func() {
+		<-ctx.Done()
+		debounceMu.Lock()
+		if debounceTimer != nil {
+			debounceTimer.Stop()
+		}
+		debounceMu.Unlock()
 	}()
 
 	slog.Info("agents: monitor started", "sources", mon.Sources())
@@ -154,7 +187,7 @@ func sessionsToAgents(sessions []session.SessionState, repoPath string) []model.
 		if sessions[i].Lifecycle == session.LifecycleTerminal {
 			continue
 		}
-		if !strings.HasPrefix(sessions[i].WorkingDir, repoPath) {
+		if !isUnderRepo(sessions[i].WorkingDir, repoPath) {
 			continue
 		}
 		agents = append(agents, sessionToAgent(sessions[i]))
@@ -231,21 +264,43 @@ func modelTier(m string) string {
 	}
 }
 
-// syncTracker upserts all active sessions and removes stale ones from tracker.
-// Only sessions whose WorkingDir is under repoPath are tracked.
+// syncTracker upserts active sessions under repoPath, removes terminal or
+// out-of-scope sessions, and purges any previously-tracked sessions that have
+// vanished from the snapshot without a lifecycle event.
 func syncTracker(tracker *Tracker, sessions []session.SessionState, repoPath string) {
+	snapshotIDs := make(map[string]struct{}, len(sessions))
+	for i := range sessions {
+		snapshotIDs[sessions[i].Source+":"+sessions[i].ID] = struct{}{}
+	}
+	tracker.PurgeAbsent(snapshotIDs)
+
 	for i := range sessions {
 		s := sessions[i]
 		if s.Lifecycle == session.LifecycleTerminal {
 			tracker.RemoveSession(s.Source + ":" + s.ID)
 			continue
 		}
-		if !strings.HasPrefix(s.WorkingDir, repoPath) {
+		if !isUnderRepo(s.WorkingDir, repoPath) {
 			tracker.RemoveSession(s.Source + ":" + s.ID)
 			continue
 		}
 		tracker.UpdateSession(awToSessionState(s))
 	}
+}
+
+// isUnderRepo reports whether workingDir is repoPath itself or a subdirectory.
+// An empty repoPath means "no restriction" (returns true for any workingDir).
+// Uses path separator awareness to avoid matching sibling directories that share
+// a common string prefix (e.g. "/repo-sibling" vs "/repo").
+func isUnderRepo(workingDir, repoPath string) bool {
+	if repoPath == "" {
+		return true
+	}
+	if workingDir == "" {
+		return false
+	}
+	return workingDir == repoPath ||
+		strings.HasPrefix(workingDir, repoPath+string(filepath.Separator))
 }
 
 // awToSessionState converts an agentwatch session.SessionState to the
