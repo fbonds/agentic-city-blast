@@ -3,6 +3,7 @@ package hub
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"sync"
@@ -32,7 +33,11 @@ type State struct {
 // NewState returns a State initialised with s.
 // The initial dirty flag is true so the first broadcast delivers a snapshot.
 func NewState(s model.CityState) *State {
-	j, _ := json.Marshal(s)
+	j, err := json.Marshal(s)
+	if err != nil {
+		slog.Error("NewState: failed to marshal initial state", "err", err)
+		return &State{state: s, dirty: true}
+	}
 	return &State{state: s, stateJSON: j, dirty: true}
 }
 
@@ -49,11 +54,15 @@ func (s *State) GetState() model.CityState {
 // SetState replaces the current CityState and pre-marshals its JSON
 // representation. Thread-safe.
 func (s *State) SetState(next model.CityState) {
-	j, _ := json.Marshal(next)
+	j, err := json.Marshal(next)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.state = next
-	s.stateJSON = j
+	if err != nil {
+		slog.Error("SetState: failed to marshal state", "err", err)
+	} else {
+		s.stateJSON = j
+	}
 	s.dirty = true
 }
 
@@ -63,8 +72,12 @@ func (s *State) AddActivity(ev model.ActivityEvent) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.state.Activities = model.AppendActivity(s.state.Activities, ev)
-	j, _ := json.Marshal(s.state)
-	s.stateJSON = j
+	j, err := json.Marshal(s.state)
+	if err != nil {
+		slog.Error("AddActivity: failed to marshal state", "err", err)
+	} else {
+		s.stateJSON = j
+	}
 	s.dirty = true
 }
 
