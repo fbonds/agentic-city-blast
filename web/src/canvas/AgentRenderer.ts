@@ -80,6 +80,7 @@ export function drawAgents(
   animManager: AnimationManager,
   lodLevel: LodLevel = 'L2',
   districtBuildings: DistrictBuilding[] = [],
+  selectedAgentId: string | null = null,
 ): void {
   if (agents.length === 0) return;
 
@@ -107,30 +108,32 @@ export function drawAgents(
     const districtSlots = new Map<string, number>();
 
     for (const agent of agents) {
+      const selected = agent.id === selectedAgentId;
       if (agent.fromId && agent.toId && agent.flyProgress !== undefined) {
-        drawFlyingAgentL3(ctx, camera, agent, districtByBuildingId, districtSlots, time, animManager);
+        drawFlyingAgentL3(ctx, camera, agent, districtByBuildingId, districtSlots, time, animManager, selected);
       } else if (agent.targetId) {
         const db = districtByBuildingId.get(agent.targetId);
         if (db) {
           const slot = districtSlots.get(db.id) ?? 0;
           districtSlots.set(db.id, slot + 1);
-          drawHoveringAgentOnDistrict(ctx, camera, agent, db, slot, time, animManager);
+          drawHoveringAgentOnDistrict(ctx, camera, agent, db, slot, time, animManager, selected);
         } else {
           // Target building not found in any district — fall back to staging.
-          drawStagingAgent(ctx, camera, agent, cityCenter, time, animManager);
+          drawStagingAgent(ctx, camera, agent, cityCenter, time, animManager, selected);
         }
       } else {
-        drawStagingAgent(ctx, camera, agent, cityCenter, time, animManager);
+        drawStagingAgent(ctx, camera, agent, cityCenter, time, animManager, selected);
       }
     }
   } else {
     for (const agent of agents) {
+      const selected = agent.id === selectedAgentId;
       if (agent.fromId && agent.toId && agent.flyProgress !== undefined) {
-        drawFlyingAgent(ctx, camera, agent, buildMap, time, animManager);
+        drawFlyingAgent(ctx, camera, agent, buildMap, time, animManager, selected);
       } else if (agent.targetId) {
-        drawHoveringAgent(ctx, camera, agent, buildMap, cityCenter, time, animManager);
+        drawHoveringAgent(ctx, camera, agent, buildMap, cityCenter, time, animManager, selected);
       } else {
-        drawStagingAgent(ctx, camera, agent, cityCenter, time, animManager);
+        drawStagingAgent(ctx, camera, agent, cityCenter, time, animManager, selected);
       }
     }
   }
@@ -180,6 +183,7 @@ function drawHoveringAgentOnDistrict(
   slot: number,
   time: number,
   animManager: AnimationManager,
+  selected = false,
 ): void {
   const cx = db.gx + db.gw / 2;
   const cy = db.gy + db.gh / 2;
@@ -193,7 +197,7 @@ function drawHoveringAgentOnDistrict(
   const sx = roofPt[0] + offsetX;
   const sy = roofPt[1] - 25 * clampedScale + animManager.getHoverBob(agent.id, time);
 
-  drawUFO(ctx, agent, sx, sy, camera.scale, time, animManager);
+  drawUFO(ctx, agent, sx, sy, camera.scale, time, animManager, selected);
 }
 
 /**
@@ -210,6 +214,7 @@ function drawFlyingAgentL3(
   districtSlots: Map<string, number>,
   time: number,
   animManager: AnimationManager,
+  selected = false,
 ): void {
   const fromDb = districtByBuildingId.get(agent.fromId!);
   const toDb   = districtByBuildingId.get(agent.toId!);
@@ -220,7 +225,7 @@ function drawFlyingAgentL3(
     // Same district — park on the district surface.
     const slot = districtSlots.get(toDb.id) ?? 0;
     districtSlots.set(toDb.id, slot + 1);
-    drawHoveringAgentOnDistrict(ctx, camera, agent, toDb, slot, time, animManager);
+    drawHoveringAgentOnDistrict(ctx, camera, agent, toDb, slot, time, animManager, selected);
     return;
   }
 
@@ -242,7 +247,7 @@ function drawFlyingAgentL3(
   const [sx, sy] = AnimationManager.bezier(p0, p1, p2, p3, t);
 
   drawFlightPath(ctx, p0, p1, p2, p3, t, agentColor(agent.color));
-  drawUFO(ctx, agent, sx, sy, camera.scale, time, animManager);
+  drawUFO(ctx, agent, sx, sy, camera.scale, time, animManager, selected);
 }
 
 // ── Hovering agent (has targetId) ───────────────────────────────────────────
@@ -258,6 +263,7 @@ function drawHoveringAgent(
   cityCenter: [number, number],
   time: number,
   animManager: AnimationManager,
+  selected = false,
 ): void {
   const target = buildMap.get(agent.targetId!);
   if (!target) return;
@@ -286,7 +292,7 @@ function drawHoveringAgent(
   drawTractorBeam(ctx, sx, sy, roofPt, agent, time);
 
   // Draw UFO disc + dome
-  drawUFO(ctx, agent, sx, sy, camera.scale, time, animManager);
+  drawUFO(ctx, agent, sx, sy, camera.scale, time, animManager, selected);
 }
 
 // ── Staging agent (no position data — parked above city centre) ─────────────
@@ -316,6 +322,7 @@ function drawStagingAgent(
   cityCenter: [number, number],
   time: number,
   animManager: AnimationManager,
+  selected = false,
 ): void {
   const clampedScale = clampScale(camera.scale);
   const slot = stagingSlotIndex++;
@@ -331,7 +338,7 @@ function drawStagingAgent(
   const sx = cityCenter[0] + offsetX;
   const sy = cityCenter[1] - (100 + offsetY) * clampedScale + animManager.getHoverBob(agent.id, time);
 
-  drawUFO(ctx, agent, sx, sy, camera.scale, time, animManager);
+  drawUFO(ctx, agent, sx, sy, camera.scale, time, animManager, selected);
 }
 
 // ── Flying agent (fromId → toId along bezier) ───────────────────────────────
@@ -343,6 +350,7 @@ function drawFlyingAgent(
   buildMap: Map<string, Building>,
   time: number,
   animManager: AnimationManager,
+  selected = false,
 ): void {
   const from = buildMap.get(agent.fromId!);
   const to   = buildMap.get(agent.toId!);
@@ -361,7 +369,7 @@ function drawFlyingAgent(
   const [sx, sy] = AnimationManager.bezier(p0, p1, p2, p3, t);
 
   drawFlightPath(ctx, p0, p1, p2, p3, t, agentColor(agent.color));
-  drawUFO(ctx, agent, sx, sy, camera.scale, time, animManager);
+  drawUFO(ctx, agent, sx, sy, camera.scale, time, animManager, selected);
 }
 
 // ── UFO drawing ─────────────────────────────────────────────────────────────
@@ -374,6 +382,7 @@ function drawUFO(
   cameraScale: number,
   time: number,
   animManager: AnimationManager,
+  selected = false,
 ): void {
   const s = Math.max(0.5, Math.min(1.8, cameraScale)) * tierScale(agent.id);
   const col = agentColor(agent.color);
@@ -383,6 +392,25 @@ function drawUFO(
   const discRy = BASE.discRy * s;
   const domeRx = BASE.domeRx * s;
   const domeH  = BASE.domeH  * s;
+
+  // ── 0. Selection ring ────────────────────────────────────────────────────
+  if (selected) {
+    const pulse = 0.55 + 0.45 * Math.sin(time * 0.004);
+    ctx.save();
+    // Outer glow
+    ctx.strokeStyle = `rgba(${r},${g},${b},${pulse * 0.35})`;
+    ctx.lineWidth = 4 * s;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, discRx * 1.55, discRy * 1.55, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    // Inner ring
+    ctx.strokeStyle = `rgba(${r},${g},${b},${pulse * 0.85})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, discRx * 1.25, discRy * 1.25, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   // ── 1. Disc shadow ───────────────────────────────────────────────────────
   ctx.save();

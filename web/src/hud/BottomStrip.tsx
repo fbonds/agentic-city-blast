@@ -105,6 +105,7 @@ export function BottomStrip(): JSX.Element {
       <Hint keys={['W', 'A', 'S', 'D']} label="pan" />
       <Hint keys={['+', '−']} label="zoom" />
       <span style={S.sep}>·</span>
+      <Hint keys={['G', '⇧G']} label="agent" />
       <Hint keys={['?']} label="shortcuts" />
       {phase2 && (
         <>

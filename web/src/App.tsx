@@ -30,6 +30,7 @@ export function App(): JSX.Element {
   const selectBuilding = useUiStore((s) => s.selectBuilding);
   const setCamera = useUiStore((s) => s.setCamera);
   const setZoom = useUiStore((s) => s.setZoom);
+  const focusedAgentIndex = useUiStore((s) => s.focusedAgentIndex);
   const setFocusedAgentIndex = useUiStore((s) => s.setFocusedAgentIndex);
   const setInspectedAgentId = useUiStore((s) => s.setInspectedAgentId);
   const [canvasCursor, setCanvasCursor] = useState<string>('default');
@@ -103,6 +104,8 @@ export function App(): JSX.Element {
         setCursor(hit.id);
         selectBuilding(hit.id);
       } else {
+        setFocusedAgentIndex(null);
+        setInspectedAgentId(null);
         const nearest = nearestBuildingToScreen(renderer.camera, city.buildings, sx, sy);
         if (nearest) setCursor(nearest.id);
       }
@@ -222,6 +225,13 @@ export function App(): JSX.Element {
       rendererRef.current.cursorDistrictId = cursorDistrictId;
     }
   }, [cursorDistrictId]);
+
+  // Sync focused agent index into renderer for UFO selection highlight
+  useEffect(() => {
+    if (rendererRef.current) {
+      rendererRef.current.selectedAgentIndex = focusedAgentIndex;
+    }
+  }, [focusedAgentIndex]);
 
   // rAF render loop
   useAnimationFrame((dt) => {
