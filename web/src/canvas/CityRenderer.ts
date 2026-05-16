@@ -56,6 +56,7 @@ export class CityRenderer {
   cursorDistrictId: string | null = null;
   selectedBuildingId: string | null = null;
   hoveredBuildingId: string | null = null;
+  selectedAgentIndex: number | null = null;
 
   // LOD transition state — backing field + animated crossfade.
   private _lodLevel: LodLevel = 'L2';
@@ -207,17 +208,20 @@ export class CityRenderer {
     // 5. Agents — UFOs hover above or fly between buildings (all LOD levels).
     //    During LOD transition, agents crossfade between their L2 and L3 positions.
     if (this.city.agents.length > 0) {
+      const selId = this.selectedAgentIndex !== null
+        ? (this.city.agents[this.selectedAgentIndex]?.id ?? null)
+        : null;
       if (transitioning) {
         this.compositeOffscreen(fromAlpha, (off) => {
-          drawAgents(off, this.camera, this.city!.agents, this.city!.buildings, now, this.animManager, fromLevel, this.districtBuildings);
+          drawAgents(off, this.camera, this.city!.agents, this.city!.buildings, now, this.animManager, fromLevel, this.districtBuildings, selId);
         });
         this.compositeOffscreen(toAlpha, (off) => {
-          drawAgents(off, this.camera, this.city!.agents, this.city!.buildings, now, this.animManager, toLevel, this.districtBuildings);
+          drawAgents(off, this.camera, this.city!.agents, this.city!.buildings, now, this.animManager, toLevel, this.districtBuildings, selId);
         });
       } else {
         drawAgents(
           ctx, this.camera, this.city.agents, this.city.buildings,
-          now, this.animManager, this._lodLevel, this.districtBuildings,
+          now, this.animManager, this._lodLevel, this.districtBuildings, selId,
         );
       }
     }

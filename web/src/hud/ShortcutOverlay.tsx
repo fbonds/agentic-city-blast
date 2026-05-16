@@ -46,10 +46,13 @@ const CATEGORIES: ShortcutCategory[] = [
   {
     title: 'Agents',
     entries: [
+      { keys: ['click UFO'], label: 'Select agent, scroll list' },
+      { keys: ['click list'], label: 'Select agent, highlight UFO' },
       { keys: ['1–9'], label: 'Jump to agent N' },
       { keys: ['G'], label: 'Next agent' },
       { keys: ['Shift+G'], label: 'Prev agent' },
       { keys: ['I'], label: 'Inspect agent' },
+      { keys: ['Esc'], label: 'Clear agent selection' },
     ],
   },
   {

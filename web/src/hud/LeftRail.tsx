@@ -1,7 +1,6 @@
-import type { CSSProperties } from 'react';
-import { useCityStore } from '../store/cityStore';
+import { type CSSProperties, useEffect, useRef } from 'react';
+import { useCityStore, type Agent, type ModelTier } from '../store/cityStore';
 import { useUiStore } from '../store/uiStore';
-import type { Agent, ModelTier } from '../store/cityStore';
 import { sol, hudBase, tierColor, modeColor, TOP_BAR_H, BOTTOM_STRIP_H } from './palette';
 
 const RAIL_W = 200;
@@ -36,13 +35,13 @@ const S: Record<string, CSSProperties> = {
   },
   agentList: {
     flex: 1,
-    overflowY: 'hidden' as const,
+    overflowY: 'auto' as const,
     padding: '4px 0',
   },
   agentRow: {
     padding: '5px 10px 4px',
     borderBottom: `1px solid ${sol.base03}`,
-    cursor: 'default',
+    cursor: 'pointer',
   },
   agentTop: {
     display: 'flex',
@@ -111,7 +110,19 @@ const S: Record<string, CSSProperties> = {
   },
 };
 
-function AgentRow({ agent, index, focused }: { agent: Agent; index: number; focused: boolean }): JSX.Element {
+function AgentRow({
+  agent,
+  index,
+  focused,
+  onClick,
+  rowRef,
+}: {
+  agent: Agent;
+  index: number;
+  focused: boolean;
+  onClick: () => void;
+  rowRef: (el: HTMLDivElement | null) => void;
+}): JSX.Element {
   const pct = Math.max(0, Math.min(100, agent.progress ?? 0));
   const tc = tierColor(agent.modelTier);
   const mc = modeColor(agent.mode);
@@ -120,7 +131,14 @@ function AgentRow({ agent, index, focused }: { agent: Agent; index: number; focu
     : S.agentRow;
 
   return (
-    <div role="listitem" aria-label={`Agent ${agent.id}, ${agent.mode || 'idle'}`} style={rowStyle}>
+    <div
+      role="listitem"
+      aria-label={`Agent ${agent.id}, ${agent.mode || 'idle'}`}
+      aria-selected={focused}
+      style={rowStyle}
+      onClick={onClick}
+      ref={rowRef}
+    >
       <div style={S.agentTop}>
         <span style={S.keyHint}>{index < 9 ? index + 1 : ''}</span>
         <span style={{ ...S.dot, background: agent.color || sol.base00 }} />
@@ -161,6 +179,16 @@ function AgentRow({ agent, index, focused }: { agent: Agent; index: number; focu
 export function LeftRail(): JSX.Element {
   const agents = useCityStore((s) => s.city.agents);
   const focusedAgentIndex = useUiStore((s) => s.focusedAgentIndex);
+  const setFocusedAgentIndex = useUiStore((s) => s.setFocusedAgentIndex);
+  const setInspectedAgentId = useUiStore((s) => s.setInspectedAgentId);
+  const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  // Scroll focused row into view whenever the selection changes
+  useEffect(() => {
+    if (focusedAgentIndex !== null) {
+      rowRefs.current[focusedAgentIndex]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [focusedAgentIndex]);
 
   return (
     <nav style={S.rail} aria-label="Agents">
@@ -170,7 +198,17 @@ export function LeftRail(): JSX.Element {
           <div style={S.empty}>no active agents</div>
         ) : (
           agents.map((a, i) => (
-            <AgentRow key={a.id} agent={a} index={i} focused={focusedAgentIndex === i} />
+            <AgentRow
+              key={a.id}
+              agent={a}
+              index={i}
+              focused={focusedAgentIndex === i}
+              onClick={() => {
+                setFocusedAgentIndex(i);
+                setInspectedAgentId(null);
+              }}
+              rowRef={(el) => { rowRefs.current[i] = el; }}
+            />
           ))
         )}
       </div>
