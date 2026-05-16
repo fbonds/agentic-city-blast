@@ -14,6 +14,28 @@ import type { Building, DistrictBuilding } from '../store/cityStore';
 import { sol as SD } from '../theme/colors';
 import { FONT_FAMILY, FONT_SIZE } from '../theme/typography';
 
+/**
+ * Opacity applied to buildings that visually occlude the cursor/selected building.
+ * Low enough to see through, high enough to still show structure.
+ */
+const OCCLUDER_ALPHA = 0.22;
+
+/** Module-level offscreen canvas reused across frames to composite faded buildings. */
+let _offscreenEl: HTMLCanvasElement | null = null;
+
+function getOffscreenCtx(width: number, height: number): CanvasRenderingContext2D {
+  if (!_offscreenEl) {
+    _offscreenEl = document.createElement('canvas');
+  }
+  if (_offscreenEl.width !== width || _offscreenEl.height !== height) {
+    _offscreenEl.width = width;
+    _offscreenEl.height = height;
+  }
+  const ctx = _offscreenEl.getContext('2d');
+  if (!ctx) throw new Error('Offscreen canvas 2D context unavailable');
+  return ctx;
+}
+
 const LANG_COLORS: Record<string, string> = {
   ts: SD.blue,
   tsx: SD.violet,
@@ -67,14 +89,58 @@ export function drawBuildings(
   buildings: Building[],
   showLabels: boolean,
   time: number,
+  occluderIds: ReadonlySet<string> = new Set(),
 ): void {
   const sorted = [...buildings].sort(
     (a, b) => (a.gx + a.gy) - (b.gx + b.gy),
   );
 
   for (const b of sorted) {
-    drawBuilding(ctx, camera, b, showLabels, time);
+    if (occluderIds.has(b.id)) {
+      drawBuildingFaded(ctx, camera, b, showLabels, time);
+    } else {
+      drawBuilding(ctx, camera, b, showLabels, time);
+    }
   }
+}
+
+/**
+ * Draw a building at reduced opacity via an offscreen canvas composite.
+ * Used for the X-ray effect: occluding buildings are faded so the user can see
+ * the building they have focused with the keyboard cursor or selection.
+ *
+ * Building is drawn normally onto an offscreen canvas, then composited onto the
+ * main canvas at OCCLUDER_ALPHA. This is necessary because drawBuilding() sets
+ * globalAlpha internally — a plain ctx.globalAlpha wrapper would be overridden.
+ */
+function drawBuildingFaded(
+  ctx: CanvasRenderingContext2D,
+  camera: IsometricCamera,
+  b: Building,
+  showLabels: boolean,
+  time: number,
+): void {
+  const { width, height } = ctx.canvas;
+  const offCtx = getOffscreenCtx(width, height);
+
+  // Clear physical pixels (identity transform, then restore DPI transform).
+  offCtx.setTransform(1, 0, 0, 1, 0, 0);
+  offCtx.clearRect(0, 0, width, height);
+
+  // Match the main canvas DPI transform so projected coordinates align.
+  const t = ctx.getTransform();
+  offCtx.setTransform(t.a, t.b, t.c, t.d, t.e, t.f);
+
+  drawBuilding(offCtx, camera, b, showLabels, time);
+
+  // Composite at reduced opacity. Reset to identity transform so the offscreen
+  // image (already rendered at physical-pixel resolution) is copied 1:1 without
+  // being scaled again by the DPI transform on the main context.
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = OCCLUDER_ALPHA;
+  ctx.drawImage(_offscreenEl!, 0, 0);
+  ctx.restore();
 }
 
 /**

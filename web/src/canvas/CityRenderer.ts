@@ -13,6 +13,7 @@ import {
   drawCursorHighlight,
   drawHoverHighlight,
 } from './BuildingRenderer';
+import { findOccluders } from './OcclusionDetector';
 import { drawRoads } from './RoadRenderer';
 import { drawAgents } from './AgentRenderer';
 import { drawLightningPaths } from './LightningRenderer';
@@ -130,7 +131,9 @@ export class CityRenderer {
     if (this.lodLevel === 'L3') {
       drawDistrictBuildings(ctx, this.camera, this.districtBuildings, this.showLabels, now);
     } else {
-      drawBuildings(ctx, this.camera, this.city.buildings, this.showLabels, now);
+      // Compute occluders for cursor/selected building so they are X-rayed (faded).
+      const occluderIds = this.computeOccluderIds();
+      drawBuildings(ctx, this.camera, this.city.buildings, this.showLabels, now, occluderIds);
     }
 
     // 5. Agents — UFOs hover above or fly between buildings (all LOD levels)
@@ -160,6 +163,32 @@ export class CityRenderer {
 
     // 8. Vignette
     this.drawVignette(w, h);
+  }
+
+  /**
+   * Compute the set of building IDs that occlude the cursor or selected building.
+   * These buildings will be rendered faded (X-ray effect) so the focused building
+   * is visible even when it is behind a taller or larger neighbour.
+   */
+  private computeOccluderIds(): Set<string> {
+    if (!this.city) return new Set();
+    const { buildings } = this.city;
+    const result = new Set<string>();
+
+    const addOccludersFor = (focusId: string): void => {
+      const focused = buildings.find((b) => b.id === focusId);
+      if (!focused) return;
+      for (const id of findOccluders(focused, buildings)) {
+        result.add(id);
+      }
+    };
+
+    if (this.cursorBuildingId) addOccludersFor(this.cursorBuildingId);
+    if (this.selectedBuildingId && this.selectedBuildingId !== this.cursorBuildingId) {
+      addOccludersFor(this.selectedBuildingId);
+    }
+
+    return result;
   }
 
   private drawGrid(w: number, h: number): void {
