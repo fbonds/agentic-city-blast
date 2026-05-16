@@ -175,6 +175,8 @@ function MinimapCanvas(): JSX.Element {
   return (
     <canvas
       ref={canvasRef}
+      role="img"
+      aria-label="Minimap overview of the city"
       style={{
         position: 'fixed',
         bottom: BOTTOM_STRIP_H + 8,
