@@ -212,10 +212,7 @@ function MinimapCanvas(): JSX.Element {
   }, [zoom, cameraX, cameraY, proj]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      role="img"
-      aria-label="Minimap overview of the city"
+    <div
       style={{
         position: 'fixed',
         bottom: BOTTOM_STRIP_H + 8,
@@ -228,7 +225,7 @@ function MinimapCanvas(): JSX.Element {
         userSelect: 'none',
       }}
     >
-      <canvas ref={staticCanvasRef} style={{ position: 'absolute', top: 0, left: 0 }} />
+      <canvas ref={staticCanvasRef} role="img" aria-label="Minimap overview of the city" style={{ position: 'absolute', top: 0, left: 0 }} />
       <canvas ref={vpCanvasRef} style={{ position: 'absolute', top: 0, left: 0 }} />
     </div>
   );
