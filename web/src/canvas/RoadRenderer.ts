@@ -16,12 +16,12 @@ import { sol } from '../theme/colors';
 const CONFIDENCE_STYLES: Record<Confidence, { dash: number[]; alpha: number; width: number }> = {
   exact:    { dash: [6, 3], alpha: 0.55, width: 1.2 },
   inferred: { dash: [4, 4], alpha: 0.35, width: 0.9 },
-  weak:     { dash: [2, 6], alpha: 0.18, width: 0.7 },
+  weak:     { dash: [2, 6], alpha: 0.22, width: 0.7 },
 };
 const FALLBACK_STYLE = CONFIDENCE_STYLES.weak;
 
 // Solarized Dark colours
-const COLOR_DEFAULT  = sol.base00; // faint, no selection
+const COLOR_DEFAULT  = sol.base0; // body fg — visible as overlay above buildings
 const COLOR_OUTGOING = sol.cyan;   // selected building → other
 const COLOR_INCOMING = sol.blue;   // other → selected building
 const COLOR_DIM      = sol.base01; // unrelated edge while selection active

@@ -155,12 +155,7 @@ export class CityRenderer {
     // 3. District outlines (back-to-front by gx+gy)
     drawDistricts(ctx, this.camera, this.city.districts);
 
-    // 3b. Roads (ground plane, drawn before buildings so they sit underneath)
-    if (this.showRoads) {
-      drawRoads(ctx, this.camera, this.city.roads, this.city.buildings, this.selectedBuildingId);
-    }
-
-    // 3c. Lightning paths from error origin to affected dependencies
+    // 3b. Lightning paths from error origin to affected dependencies
     const now = performance.now();
     drawLightningPaths(ctx, this.camera, this.city.buildings, this.city.roads, now);
 
@@ -205,7 +200,13 @@ export class CityRenderer {
       );
     }
 
-    // 5. Agents — UFOs hover above or fly between buildings (all LOD levels).
+    // 5. Roads — dependency edges drawn after buildings so they appear as a
+    //    visible overlay, not hidden under building footprints.
+    if (this.showRoads) {
+      drawRoads(ctx, this.camera, this.city.roads, this.city.buildings, this.selectedBuildingId);
+    }
+
+    // 6. Agents — UFOs hover above or fly between buildings (all LOD levels).
     //    During LOD transition, agents crossfade between their L2 and L3 positions.
     if (this.city.agents.length > 0) {
       const selId = this.selectedAgentIndex !== null
