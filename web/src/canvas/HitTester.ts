@@ -72,22 +72,89 @@ export function hitTestBuildings(
   return hit;
 }
 
-/** Compute an agent's screen position (ignoring hover bob). */
+// Mirror the constants from AgentRenderer so hit positions match draw positions exactly.
+const FLIGHT_ARC_H      = 80;
+const STAGING_SLOT_SPACING = 40;
+
+/** Cubic bezier point at t — mirrors AnimationManager.bezier without the import. */
+function bezierPoint(
+  p0: [number, number],
+  p1: [number, number],
+  p2: [number, number],
+  p3: [number, number],
+  t: number,
+): [number, number] {
+  const mt = 1 - t;
+  return [
+    mt ** 3 * p0[0] + 3 * mt ** 2 * t * p1[0] + 3 * mt * t ** 2 * p2[0] + t ** 3 * p3[0],
+    mt ** 3 * p0[1] + 3 * mt ** 2 * t * p1[1] + 3 * mt * t ** 2 * p2[1] + t ** 3 * p3[1],
+  ];
+}
+
+/**
+ * Compute an agent's screen position (ignoring hover bob), matching AgentRenderer logic.
+ *
+ * Three cases:
+ *   flying  — bezier arc between fromId and toId building roofs
+ *   hovering — above targetId building roof
+ *   staging  — above city centre in a slot grid (stagingSlot tracks how many
+ *              staging agents have already been assigned positions this call)
+ */
 function agentScreenPos(
   camera: IsometricCamera,
   agent: Agent,
   buildMap: Map<string, Building>,
+  cityCenter: [number, number],
+  stagingSlot: number,
 ): [number, number] | null {
+  const clampedScale = Math.max(0.6, Math.min(1.5, camera.scale));
+
+  if (agent.fromId && agent.toId && agent.flyProgress !== undefined) {
+    const from = buildMap.get(agent.fromId);
+    const to   = buildMap.get(agent.toId);
+    if (!from || !to) return null;
+
+    const fromPt = camera.project(from.gx + from.gw / 2, from.gy + from.gh / 2, from.gz);
+    const toPt   = camera.project(to.gx   + to.gw   / 2, to.gy   + to.gh   / 2, to.gz);
+    const p1: [number, number] = [fromPt[0], fromPt[1] - FLIGHT_ARC_H];
+    const p2: [number, number] = [toPt[0],   toPt[1]   - FLIGHT_ARC_H];
+    const t = Math.max(0, Math.min(1, agent.flyProgress));
+    return bezierPoint(fromPt, p1, p2, toPt, t);
+  }
+
   if (agent.targetId) {
     const target = buildMap.get(agent.targetId);
     if (!target) return null;
     const cx = target.gx + target.gw / 2;
     const cy = target.gy + target.gh / 2;
     const roofPt = camera.project(cx, cy, target.gz);
-    const hoverY = roofPt[1] - 30 * Math.max(0.6, Math.min(1.5, camera.scale));
-    return [roofPt[0], hoverY];
+    return [roofPt[0], roofPt[1] - 30 * clampedScale];
   }
-  return null;
+
+  // Staging agent — parked above city centre in a 3-column grid.
+  const col = stagingSlot % 3;
+  const row = Math.floor(stagingSlot / 3);
+  const offsetX = (col - 1) * STAGING_SLOT_SPACING * clampedScale;
+  const offsetY = row * STAGING_SLOT_SPACING * 0.75 * clampedScale;
+  return [
+    cityCenter[0] + offsetX,
+    cityCenter[1] - (100 + offsetY) * clampedScale,
+  ];
+}
+
+/** Compute average screen-space position of building centres (gz=0 plane). */
+function cityCenterScreen(
+  camera: IsometricCamera,
+  buildings: Building[],
+): [number, number] {
+  if (buildings.length === 0) return [0, 0];
+  let sumX = 0, sumY = 0;
+  for (const b of buildings) {
+    const [px, py] = camera.project(b.gx + b.gw / 2, b.gy + b.gh / 2, 0);
+    sumX += px;
+    sumY += py;
+  }
+  return [sumX / buildings.length, sumY / buildings.length];
 }
 
 const UFO_HIT_RADIUS = 18;
@@ -105,13 +172,18 @@ export function hitTestAgents(
 ): number | null {
   if (agents.length === 0) return null;
   const buildMap = new Map<string, Building>(buildings.map((b) => [b.id, b]));
+  const cityCenter = cityCenterScreen(camera, buildings);
   const hitR = UFO_HIT_RADIUS * Math.max(0.5, Math.min(1.8, camera.scale));
 
   let bestIdx: number | null = null;
   let bestDist = hitR * hitR;
+  let stagingSlot = 0;
 
   for (let i = 0; i < agents.length; i++) {
-    const pos = agentScreenPos(camera, agents[i], buildMap);
+    const agent = agents[i];
+    const isStagingAgent = !agent.fromId && !agent.targetId;
+    const slot = isStagingAgent ? stagingSlot++ : 0;
+    const pos = agentScreenPos(camera, agent, buildMap, cityCenter, slot);
     if (!pos) continue;
     const d = (pos[0] - sx) ** 2 + (pos[1] - sy) ** 2;
     if (d < bestDist) {
