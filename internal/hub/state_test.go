@@ -513,8 +513,8 @@ func TestDiff_KeyedArrayInsertAndModify(t *testing.T) {
 	}})
 	cur := mustJSON(t, map[string]any{"agents": []any{
 		map[string]any{"id": "a0", "mode": "fly"},  // new
-		map[string]any{"id": "a1", "mode": "work"},  // changed
-		map[string]any{"id": "a2", "mode": "work"},  // unchanged
+		map[string]any{"id": "a1", "mode": "work"}, // changed
+		map[string]any{"id": "a2", "mode": "work"}, // unchanged
 	}})
 
 	patches := Diff(old, cur)

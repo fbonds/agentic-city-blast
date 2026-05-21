@@ -35,8 +35,8 @@ type RepoInfo struct {
 
 // District represents a directory in the city layout.
 type District struct {
-	ID       string  `json:"id"`       // directory path: "src/auth"
-	Label    string  `json:"label"`    // display: "AUTH/"
+	ID       string  `json:"id"`    // directory path: "src/auth"
+	Label    string  `json:"label"` // display: "AUTH/"
 	ParentID string  `json:"parentId"`
 	GX       float64 `json:"gx"` // grid coordinates
 	GY       float64 `json:"gy"`
@@ -46,20 +46,20 @@ type District struct {
 
 // Building represents a source file in the city layout.
 type Building struct {
-	ID         string  `json:"id"`         // file path relative to repo root
+	ID         string  `json:"id"` // file path relative to repo root
 	DistrictID string  `json:"districtId"`
-	Label      string  `json:"label"`      // filename
-	Language   string  `json:"language"`   // "ts", "tsx", "go", "py", "sql"
+	Label      string  `json:"label"`    // filename
+	Language   string  `json:"language"` // "ts", "tsx", "go", "py", "sql"
 	LOC        int     `json:"loc"`
-	Coverage   float64 `json:"coverage"`   // -1 unknown, 0.0–1.0 → window dot density
-	Status     string  `json:"status"`     // "ok" | "warn" | "err" | "unknown"
-	Editing    bool    `json:"editing"`    // yellow pulse rings on roof
+	Coverage   float64 `json:"coverage"` // -1 unknown, 0.0–1.0 → window dot density
+	Status     string  `json:"status"`   // "ok" | "warn" | "err" | "unknown"
+	Editing    bool    `json:"editing"`  // yellow pulse rings on roof
 	Exports    int     `json:"exports"`
-	GX         float64 `json:"gx"`         // grid position
+	GX         float64 `json:"gx"` // grid position
 	GY         float64 `json:"gy"`
-	GW         float64 `json:"gw"`         // footprint
+	GW         float64 `json:"gw"` // footprint
 	GH         float64 `json:"gh"`
-	GZ         float64 `json:"gz"`         // height (∝ LOC)
+	GZ         float64 `json:"gz"` // height (∝ LOC)
 }
 
 // Road represents a dependency edge between two buildings.
@@ -74,22 +74,22 @@ type Road struct {
 type Agent struct {
 	ID                 string  `json:"id"`
 	Color              string  `json:"color"`
-	Mode               string  `json:"mode"`                        // "idle" | "work" | "fly" | "error"
+	Mode               string  `json:"mode"` // "idle" | "work" | "fly" | "error"
 	Task               string  `json:"task"`
-	Progress           int     `json:"progress"`                    // 0–100
+	Progress           int     `json:"progress"`                     // 0–100
 	TargetID           string  `json:"targetId,omitempty"`           // mode=work
 	LocationConfidence string  `json:"locationConfidence,omitempty"` // "exact" | "inferred" | "district" | "unknown"
 	FromID             string  `json:"fromId,omitempty"`             // mode=fly
 	ToID               string  `json:"toId,omitempty"`               // mode=fly
 	FlyProgress        float64 `json:"flyProgress"`                  // 0.0–1.0 on bezier
 	ErrorMsg           string  `json:"errorMsg,omitempty"`
-	ModelTier          string  `json:"modelTier,omitempty"`          // "opus" | "sonnet" | "haiku" | "unknown"
+	ModelTier          string  `json:"modelTier,omitempty"` // "opus" | "sonnet" | "haiku" | "unknown"
 }
 
 // ActivityEvent is an entry in the city's activity log.
 type ActivityEvent struct {
 	Timestamp string `json:"ts"`
-	Who       string `json:"who"`      // agent ID | "CI" | "YOU"
+	Who       string `json:"who"` // agent ID | "CI" | "YOU"
 	Message   string `json:"message"`
 	Color     string `json:"color"`
 	Severity  string `json:"severity"` // "info" | "warn" | "error"

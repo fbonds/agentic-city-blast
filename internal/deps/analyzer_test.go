@@ -187,7 +187,7 @@ func TestBuildGraphJS(t *testing.T) {
 	}
 
 	files := map[string]string{
-		"src/App.tsx": `import { helper } from './utils';`,
+		"src/App.tsx":  `import { helper } from './utils';`,
 		"src/utils.ts": `import { format } from './index';`,
 		"src/index.ts": `export const format = () => {};`,
 	}

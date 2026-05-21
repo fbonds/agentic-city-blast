@@ -301,9 +301,9 @@ func TestRunWatcher_PropagatesContentUpdate(t *testing.T) {
 
 func TestReadModuleName(t *testing.T) {
 	cases := []struct {
-		name     string
-		gomod    *string // nil means no go.mod file written
-		want     string
+		name  string
+		gomod *string // nil means no go.mod file written
+		want  string
 	}{
 		{"valid go.mod", strPtr("module github.com/example/myapp\n\ngo 1.21\n"), "github.com/example/myapp"},
 		{"missing go.mod", nil, ""},

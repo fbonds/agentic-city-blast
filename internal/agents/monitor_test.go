@@ -152,7 +152,7 @@ func TestModelTier(t *testing.T) {
 		{"claude-haiku-4-5-20251001", "haiku"},
 		{"gpt-4o", "unknown"},
 		{"", "unknown"},
-		{"CLAUDE-OPUS-3", "opus"},    // case-insensitive
+		{"CLAUDE-OPUS-3", "opus"},       // case-insensitive
 		{"Claude-Sonnet-3-7", "sonnet"}, // mixed case
 	}
 	for _, tc := range cases {

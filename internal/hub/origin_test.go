@@ -8,10 +8,10 @@ import (
 
 func TestCheckOriginRejectsArbitraryOrigins(t *testing.T) {
 	tests := []struct {
-		name       string
-		host       string
-		origin     string
-		wantAllow  bool
+		name      string
+		host      string
+		origin    string
+		wantAllow bool
 	}{
 		{
 			name:      "same host allowed",
