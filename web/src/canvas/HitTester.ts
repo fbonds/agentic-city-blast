@@ -188,7 +188,9 @@ export function hitTestAgents(
 
   for (let i = 0; i < agents.length; i++) {
     const agent = agents[i];
-    const isStagingAgent = !agent.fromId && !agent.targetId;
+    const isFlying    = !!(agent.fromId && agent.toId && agent.flyProgress !== undefined);
+    const isHovering  = !isFlying && !!agent.targetId;
+    const isStagingAgent = !isFlying && !isHovering;
     const slot = isStagingAgent ? stagingSlot++ : 0;
     const pos = agentScreenPos(camera, agent, buildMap, cityCenter, slot);
     if (!pos) continue;

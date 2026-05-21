@@ -136,6 +136,46 @@ describe('hitTestAgents — flying agent (fromId + toId + flyProgress)', () => {
   });
 });
 
+describe('hitTestAgents — partial-flight agents treated as staging', () => {
+  it('agent with fromId but no toId is treated as staging (slot increments)', () => {
+    // An agent with fromId but no toId/flyProgress falls through to staging in
+    // AgentRenderer. isStagingAgent must mirror that so slot counters stay in sync.
+    const camera = mkCamera();
+    const building = mkBuilding('b1', 0, 0);
+    const bScreenPt = camera.project(building.gx + building.gw / 2, building.gy + building.gh / 2, 0);
+    const cityCenterSx = bScreenPt[0];
+    const cityCenterSy = bScreenPt[1];
+
+    const agents = [
+      mkAgent({ id: 'partial-flight', fromId: 'b1' }), // slot 0 — partial flight, no toId
+      mkAgent({ id: 'staging' }),                       // slot 1 — normal staging agent
+    ];
+
+    // Second agent should be at slot 1: col=1, row=0, offsetX=0, sy=cityCenterSy-100
+    const slot1Sx = cityCenterSx + 0;
+    const slot1Sy = cityCenterSy - 100;
+
+    const result = hitTestAgents(camera, agents, [building], slot1Sx, slot1Sy);
+    expect(result).toBe(1);
+  });
+
+  it('agent with fromId+toId but no flyProgress is treated as staging', () => {
+    const camera = mkCamera();
+    const building = mkBuilding('b1', 0, 0);
+    const bScreenPt = camera.project(building.gx + building.gw / 2, building.gy + building.gh / 2, 0);
+    const cityCenterSx = bScreenPt[0];
+    const cityCenterSy = bScreenPt[1];
+
+    // slot 0: col=0, row=0, offsetX=-40, sy=cityCenterSy-100
+    const agent = mkAgent({ id: 'no-progress', fromId: 'b1', toId: 'b2' }); // flyProgress undefined
+    const expectedSx = cityCenterSx - 40;
+    const expectedSy = cityCenterSy - 100;
+
+    const result = hitTestAgents(camera, [agent], [building], expectedSx, expectedSy);
+    expect(result).toBe(0);
+  });
+});
+
 describe('hitTestAgents — empty input', () => {
   it('returns null for empty agent list', () => {
     const camera = mkCamera();
