@@ -1,7 +1,9 @@
 package model
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -33,6 +35,27 @@ func TestAppendActivity_cap(t *testing.T) {
 	expectedFirst := fmt.Sprintf("msg %d", total-ActivityCap)
 	if first.Message != expectedFirst {
 		t.Errorf("expected oldest kept entry %q, got %q", expectedFirst, first.Message)
+	}
+}
+
+// TestAgentFlyProgressZeroSerializes verifies that FlyProgress=0.0 is always
+// included in JSON output. Previously the field had omitempty which caused
+// the frontend to receive undefined on arc completion, producing a one-tick
+// flash to the staging renderer.
+func TestAgentFlyProgressZeroSerializes(t *testing.T) {
+	a := Agent{
+		ID:          "agent-1",
+		Mode:        "fly",
+		FromID:      "bldg-a",
+		ToID:        "bldg-b",
+		FlyProgress: 0.0,
+	}
+	data, err := json.Marshal(a)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	if !strings.Contains(string(data), `"flyProgress":0`) {
+		t.Errorf("expected flyProgress:0 in JSON, got: %s", data)
 	}
 }
 

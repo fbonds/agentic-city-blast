@@ -81,7 +81,7 @@ type Agent struct {
 	LocationConfidence string  `json:"locationConfidence,omitempty"` // "exact" | "inferred" | "district" | "unknown"
 	FromID             string  `json:"fromId,omitempty"`             // mode=fly
 	ToID               string  `json:"toId,omitempty"`               // mode=fly
-	FlyProgress        float64 `json:"flyProgress,omitempty"`        // 0.0–1.0 on bezier
+	FlyProgress        float64 `json:"flyProgress"`                  // 0.0–1.0 on bezier
 	ErrorMsg           string  `json:"errorMsg,omitempty"`
 	ModelTier          string  `json:"modelTier,omitempty"`          // "opus" | "sonnet" | "haiku" | "unknown"
 }
