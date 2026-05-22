@@ -41,7 +41,7 @@ export function coverageColor(cov: number): string {
 export function tierColor(tier: string | undefined): string {
   switch (tier) {
     case 'opus':   return sol.violet;
-    case 'sonnet': return sol.blue;
+    case 'sonnet': return sol.base2;
     case 'haiku':  return sol.cyan;
     default:       return sol.base00;
   }
