@@ -7,6 +7,7 @@
 
 import { useCityStore } from './cityStore';
 import type { CityState } from './cityStore';
+import { useCoverageStore } from './coverageStore';
 
 // ── Message types ─────────────────────────────────────────────────────────────
 
@@ -174,9 +175,11 @@ function handleMessage(raw: MessageEvent): void {
 
   if (msg.type === 'state.full') {
     store.setCity(msg.data);
+    useCoverageStore.getState().updateCoverage(msg.data.buildings ?? []);
   } else if (msg.type === 'state.patch') {
     const next = applyPatches(store.city, msg.patches) as CityState;
     store.setCity(next);
+    useCoverageStore.getState().updateCoverage(next.buildings ?? []);
   }
 }
 

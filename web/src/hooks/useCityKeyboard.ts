@@ -10,6 +10,7 @@
 import { useEffect, useRef } from 'react';
 import { useCityStore } from '../store/cityStore';
 import { useUiStore, LOD_THRESHOLDS } from '../store/uiStore';
+import { useCoverageStore } from '../store/coverageStore';
 import { useCameraControls } from './useCameraControls';
 import type { Building } from '../store/cityStore';
 import type { CityRenderer } from '../canvas/CityRenderer';
@@ -177,6 +178,7 @@ export function useCityKeyboard(
   const openCommandPalette = useUiStore((s) => s.openCommandPalette);
   const alarmActive = useUiStore((s) => s.alarmActive);
   const toggleAlarm = useUiStore((s) => s.toggleAlarm);
+  const coverageAlarmActive = useCoverageStore((s) => s.coverageAlarmActive);
 
   // Ref holds latest reactive state so the keydown handler stays stable.
   // Updated on every render, so it always reflects current store values —
@@ -184,12 +186,12 @@ export function useCityKeyboard(
   const stateRef = useRef({
     buildings, districts, agents, cursorBuildingId, cursorDistrictId, lodLevel,
     focusZone, showShortcutOverlay, focusedAgentIndex, inspectedAgentId,
-    phase2, dispatchMode, commandPaletteOpen, alarmActive,
+    phase2, dispatchMode, commandPaletteOpen, alarmActive, coverageAlarmActive,
   });
   stateRef.current = {
     buildings, districts, agents, cursorBuildingId, cursorDistrictId, lodLevel,
     focusZone, showShortcutOverlay, focusedAgentIndex, inspectedAgentId,
-    phase2, dispatchMode, commandPaletteOpen, alarmActive,
+    phase2, dispatchMode, commandPaletteOpen, alarmActive, coverageAlarmActive,
   };
 
   // Sanitize cursor when the building list changes. If cursorBuildingId no
@@ -233,7 +235,7 @@ export function useCityKeyboard(
       const {
         buildings, districts, agents, cursorBuildingId, cursorDistrictId, lodLevel,
         focusZone, showShortcutOverlay, focusedAgentIndex, inspectedAgentId,
-        phase2, dispatchMode, commandPaletteOpen, alarmActive,
+        phase2, dispatchMode, commandPaletteOpen, alarmActive, coverageAlarmActive,
       } = stateRef.current;
 
       if (e.key === '?') {
@@ -267,7 +269,7 @@ export function useCityKeyboard(
       }
 
       // Phase 2 modals own their keyboard — yield all events
-      if (dispatchMode || commandPaletteOpen || alarmActive) return;
+      if (dispatchMode || commandPaletteOpen || alarmActive || coverageAlarmActive) return;
 
       // --- Focus-zone switching ---
       if (e.key === '[') { setFocusZone('left'); e.preventDefault(); return; }

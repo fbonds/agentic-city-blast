@@ -30,8 +30,8 @@ export interface AlarmInfo {
   warningCount: number;
 }
 
-/** Walk the dependency graph from `originId` to find downstream buildings. */
-function findDownstream(
+/** Walk the dependency graph from `originId` to find all connected buildings. */
+export function findDownstream(
   originId: string,
   roads: Road[],
   buildingMap: Map<string, Building>,

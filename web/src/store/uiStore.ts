@@ -145,6 +145,8 @@ interface UiStore {
 
   // Phase 2 actions
   openDispatch: (preselectedBuildingId?: string, preselectedRole?: DispatchRole) => void;
+  /** Like openDispatch but accepts multiple pre-selected building IDs. */
+  openDispatchScope: (ids: string[], preselectedRole?: DispatchRole) => void;
   closeDispatch: () => void;
   setDispatchStep: (step: DispatchStep) => void;
   toggleScopeBuilding: (id: string) => void;
@@ -214,6 +216,14 @@ export const useUiStore = create<UiStore>((set) => ({
     dispatchMode: true,
     dispatchStep: 1,
     dispatchScope: preselectedBuildingId ? [preselectedBuildingId] : [],
+    dispatchRole: preselectedRole ?? null,
+    focusZone: 'modal',
+    commandPaletteOpen: false,
+  }),
+  openDispatchScope: (ids, preselectedRole) => set({
+    dispatchMode: true,
+    dispatchStep: 1,
+    dispatchScope: ids,
     dispatchRole: preselectedRole ?? null,
     focusZone: 'modal',
     commandPaletteOpen: false,
