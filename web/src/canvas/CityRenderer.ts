@@ -88,7 +88,7 @@ export class CityRenderer {
 
   setCity(city: CityState): void {
     this.city = city;
-    this.districtBuildings = selectDistrictBuildings(city.districts, city.buildings, city.agents);
+    this.districtBuildings = selectDistrictBuildings(city.districts, city.buildings, city.agents, city.settings);
     if (!this.hasFitted && (city.buildings.length > 0 || city.districts.length > 0)) {
       this.hasFitted = true;
       const dpr = window.devicePixelRatio || 1;

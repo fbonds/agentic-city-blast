@@ -287,9 +287,14 @@ function drawBuilding(
     drawEditRings(ctx, camera, b, time);
   }
 
-  // --- 10. Floating label with backing plate ---
+  // --- 10. Coverage warning badge (slow pulse ring, when coverageWarn=true) ---
+  if (b.coverageWarn && !isAlarmStatus(b.status)) {
+    drawCoverageWarnBadge(ctx, camera, b, time);
+  }
+
+  // --- 11. Floating label with backing plate ---
   if (showLabels) {
-    drawLabel(ctx, b, D2, b.status === 'CRIT');
+    drawLabel(ctx, b, D2, b.status === 'CRIT', b.coverageWarn);
   }
 }
 
@@ -605,13 +610,51 @@ function drawSmokeLines(
   ctx.restore();
 }
 
+/**
+ * Draw a slow-pulsing yellow warning ring on the building roof to indicate
+ * coverage below threshold. Distinct from edit rings (yellow, slow) and alarm
+ * flash (red, fast). Only drawn when coverageWarn=true and not in alarm state.
+ */
+function drawCoverageWarnBadge(
+  ctx: CanvasRenderingContext2D,
+  camera: IsometricCamera,
+  b: Building,
+  time: number,
+): void {
+  const roofCx = camera.project(b.gx + b.gw / 2, b.gy + b.gh / 2, b.gz);
+  const cx = roofCx[0];
+  const cy = roofCx[1];
+
+  const maxR = Math.max((b.gw + b.gh) * camera.scale * 0.22, 4);
+  // Slow pulse — 2.4 s period, one ring, no expansion (static glow at small radius)
+  const alpha = 0.35 + 0.35 * Math.sin((time / 2400) * Math.PI * 2);
+
+  ctx.save();
+  ctx.strokeStyle = SD.yellow;
+  ctx.lineWidth = Math.max(1.2, camera.scale * 0.9);
+  ctx.globalAlpha = alpha;
+  ctx.setLineDash([3, 2]);
+  ctx.beginPath();
+  ctx.arc(cx, cy, maxR, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawLabel(
   ctx: CanvasRenderingContext2D,
   b: Building,
   bottomLeft: [number, number],
   isCrit = false,
+  coverageWarn = false,
 ): void {
-  const displayLabel = isCrit ? `▲ ${b.label}` : b.label;
+  let displayLabel: string;
+  if (isCrit) {
+    displayLabel = `▲ ${b.label}`;
+  } else if (coverageWarn) {
+    displayLabel = `⚠ ${b.label}`;
+  } else {
+    displayLabel = b.label;
+  }
   ctx.font = `${isCrit ? 'bold ' : ''}${FONT_SIZE.label}px ${FONT_FAMILY}`;
   const textWidth = ctx.measureText(displayLabel).width;
   const padX = 4;
@@ -623,16 +666,18 @@ function drawLabel(
   const plateY = bottomLeft[1] - plateH / 2;
 
   const statusColor = statusToColor(b.status);
+  // Coverage-warn border/text: yellow, but only when no stronger status color applies.
+  const labelColor = statusColor ?? (coverageWarn ? SD.yellow : SD.base2);
 
   // Backing plate
   ctx.fillStyle = 'rgba(13,16,20,0.85)';
   ctx.fillRect(plateX, plateY, plateW, plateH);
-  ctx.strokeStyle = statusColor ?? SD.base01;
+  ctx.strokeStyle = labelColor === SD.base2 ? SD.base01 : labelColor;
   ctx.lineWidth = 0.4;
   ctx.strokeRect(plateX, plateY, plateW, plateH);
 
   // Text
-  ctx.fillStyle = statusColor ?? SD.base2;
+  ctx.fillStyle = labelColor;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(displayLabel, plateX + plateW / 2, plateY + plateH / 2);

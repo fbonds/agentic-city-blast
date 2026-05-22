@@ -13,6 +13,34 @@ func AppendActivity(activities []ActivityEvent, ev ActivityEvent) []ActivityEven
 	return activities
 }
 
+// Settings holds configurable thresholds and alert preferences for Agent City.
+type Settings struct {
+	// CoverageThreshold is the global minimum acceptable coverage ratio (0.0–1.0).
+	// Buildings and districts below this threshold are marked with coverageWarn.
+	CoverageThreshold float64 `json:"coverageThreshold"`
+
+	// DistrictThresholds overrides CoverageThreshold for specific districts.
+	// Key: district ID (e.g. "src/auth"). Value: threshold ratio (0.0–1.0).
+	DistrictThresholds map[string]float64 `json:"districtThresholds"`
+}
+
+// DefaultSettings returns a Settings value with sensible defaults.
+func DefaultSettings() Settings {
+	return Settings{
+		CoverageThreshold:  0.6,
+		DistrictThresholds: map[string]float64{},
+	}
+}
+
+// ThresholdFor returns the applicable coverage threshold for a given district ID.
+// It returns the per-district override if one exists, otherwise the global threshold.
+func (s Settings) ThresholdFor(districtID string) float64 {
+	if t, ok := s.DistrictThresholds[districtID]; ok {
+		return t
+	}
+	return s.CoverageThreshold
+}
+
 // CityState is the top-level snapshot sent to browser clients.
 type CityState struct {
 	RepoInfo   RepoInfo        `json:"repoInfo"`
@@ -22,6 +50,7 @@ type CityState struct {
 	Agents     []Agent         `json:"agents"`
 	Activities []ActivityEvent `json:"activities"`
 	Stats      RepoStats       `json:"stats"`
+	Settings   Settings        `json:"settings"`
 	Timestamp  int64           `json:"ts"`
 }
 
@@ -46,20 +75,21 @@ type District struct {
 
 // Building represents a source file in the city layout.
 type Building struct {
-	ID         string  `json:"id"` // file path relative to repo root
-	DistrictID string  `json:"districtId"`
-	Label      string  `json:"label"`    // filename
-	Language   string  `json:"language"` // "ts", "tsx", "go", "py", "sql"
-	LOC        int     `json:"loc"`
-	Coverage   float64 `json:"coverage"` // -1 unknown, 0.0–1.0 → window dot density
-	Status     string  `json:"status"`   // "ok" | "warn" | "err" | "unknown"
-	Editing    bool    `json:"editing"`  // yellow pulse rings on roof
-	Exports    int     `json:"exports"`
-	GX         float64 `json:"gx"` // grid position
-	GY         float64 `json:"gy"`
-	GW         float64 `json:"gw"` // footprint
-	GH         float64 `json:"gh"`
-	GZ         float64 `json:"gz"` // height (∝ LOC)
+	ID           string  `json:"id"` // file path relative to repo root
+	DistrictID   string  `json:"districtId"`
+	Label        string  `json:"label"`    // filename
+	Language     string  `json:"language"` // "ts", "tsx", "go", "py", "sql"
+	LOC          int     `json:"loc"`
+	Coverage     float64 `json:"coverage"`     // -1 unknown, 0.0–1.0 window dot density
+	CoverageWarn bool    `json:"coverageWarn"` // true when coverage < applicable threshold
+	Status       string  `json:"status"`       // "ok" | "warn" | "err" | "unknown"
+	Editing      bool    `json:"editing"`      // yellow pulse rings on roof
+	Exports      int     `json:"exports"`
+	GX           float64 `json:"gx"` // grid position
+	GY           float64 `json:"gy"`
+	GW           float64 `json:"gw"` // footprint
+	GH           float64 `json:"gh"`
+	GZ           float64 `json:"gz"` // height (∝ LOC)
 }
 
 // Road represents a dependency edge between two buildings.

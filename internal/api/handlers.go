@@ -2,13 +2,16 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"path"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/mferree/agent-city/internal/agents"
+	"github.com/mferree/agent-city/internal/city"
 	"github.com/mferree/agent-city/internal/model"
 )
 
@@ -105,6 +108,57 @@ func (s *Server) handleDispatch(w http.ResponseWriter, r *http.Request) {
 	slog.Info("dispatch succeeded", "slug", result.Slug, "branch", result.Branch)
 	s.emitActivity("YOU", "Dispatched agent "+result.Slug+" ("+req.Role+")", "#6a8a4a", "info")
 	s.writeJSON(w, r, result)
+}
+
+// handleGetSettings returns the current settings as JSON.
+func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
+	s.writeJSON(w, r, s.state.GetState().Settings)
+}
+
+// handleUpdateSettings parses a new Settings value, applies it to the state,
+// re-marks coverage thresholds, and emits activity events for any buildings that
+// newly drop below threshold as a result of the change.
+func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
+	var newSettings model.Settings
+	if err := json.NewDecoder(r.Body).Decode(&newSettings); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if newSettings.CoverageThreshold < 0 || newSettings.CoverageThreshold > 1 {
+		http.Error(w, "coverageThreshold must be between 0 and 1", http.StatusBadRequest)
+		return
+	}
+	for districtID, t := range newSettings.DistrictThresholds {
+		if t < 0 || t > 1 {
+			http.Error(w, fmt.Sprintf("districtThreshold for %q must be between 0 and 1", districtID), http.StatusBadRequest)
+			return
+		}
+	}
+	if newSettings.DistrictThresholds == nil {
+		newSettings.DistrictThresholds = map[string]float64{}
+	}
+
+	var crossings []string
+	s.updater.Update(func(curr model.CityState) model.CityState {
+		prev := curr
+		curr.Settings = newSettings
+		next := city.MarkCoverageThresholds(curr)
+		crossings = city.DetectThresholdCrossings(prev, next)
+		return next
+	})
+
+	for _, id := range crossings {
+		label := path.Base(id)
+		s.emitActivity("COV", fmt.Sprintf("Coverage below threshold: %s", label), "#b58900", "warn")
+		slog.Info("coverage threshold crossed", "file", id)
+	}
+
+	if s.notifier != nil && len(crossings) == 0 {
+		// Settings changed but no new crossings — still broadcast the settings update.
+		s.notifier.Notify()
+	}
+
+	s.writeJSON(w, r, s.state.GetState().Settings)
 }
 
 // emitActivity pushes an ActivityEvent into the hub state and triggers a broadcast.

@@ -13,6 +13,11 @@ type StateProvider interface {
 	GetState() model.CityState
 }
 
+// StateUpdater allows atomic in-place mutation of the city state.
+type StateUpdater interface {
+	Update(fn func(model.CityState) model.CityState)
+}
+
 // ActivitySink can append activity events and notify connected clients.
 type ActivitySink interface {
 	AddActivity(ev model.ActivityEvent)
@@ -26,6 +31,7 @@ type Notifier interface {
 // Server holds shared dependencies for all HTTP handlers.
 type Server struct {
 	state     StateProvider
+	updater   StateUpdater
 	wsHandler http.HandlerFunc
 	spawner   *agents.Spawner
 	sink      ActivitySink
@@ -88,12 +94,31 @@ func (s *Server) WithSpawner(sp *agents.Spawner, sink ActivitySink, notifier Not
 	return s
 }
 
+// WithStateUpdater enables the GET/POST /api/settings endpoints.
+// sink and notifier are optional; when non-nil they are used to emit activity
+// events on threshold crossings and to broadcast the settings change.
+func (s *Server) WithStateUpdater(u StateUpdater, sink ActivitySink, notifier Notifier) *Server {
+	s.updater = u
+	// Only set sink/notifier when not already configured (WithSpawner takes priority).
+	if s.sink == nil {
+		s.sink = sink
+	}
+	if s.notifier == nil {
+		s.notifier = notifier
+	}
+	return s
+}
+
 // Register mounts all API routes onto mux.
 func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/state", s.handleGetState)
 	mux.HandleFunc("GET /api/buildings/{id...}", s.handleGetBuilding)
 	if s.spawner != nil {
 		mux.HandleFunc("POST /api/dispatch", s.handleDispatch)
+	}
+	if s.updater != nil {
+		mux.HandleFunc("GET /api/settings", s.handleGetSettings)
+		mux.HandleFunc("POST /api/settings", s.handleUpdateSettings)
 	}
 	if s.wsHandler != nil {
 		mux.HandleFunc("GET /ws", s.wsHandler)

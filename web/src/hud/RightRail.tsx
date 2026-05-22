@@ -4,6 +4,8 @@ import { useUiStore } from '../store/uiStore';
 import type { ActivityEvent, Building, Agent, DistrictBuilding } from '../store/cityStore';
 import { sol, langColor, coverageColor, ciColor, tierColor, severityColor, hudBase, TOP_BAR_H, BOTTOM_STRIP_H } from './palette';
 
+const MAX_THRESHOLD_ALERTS = 10;
+
 const RAIL_W = 220;
 
 /** Format a timestamp string to HH:MM:SS or just time portion. */
@@ -133,10 +135,65 @@ function BuildingPanel({ building }: { building: Building }): JSX.Element {
         <span style={S.rowLabel}>cov</span>
         <span style={{ ...S.rowValue, color: coverageColor(building.coverage) }}>{cov}</span>
       </div>
+      {building.coverageWarn && (
+        <div style={S.row}>
+          <span style={{ ...S.rowLabel, color: sol.yellow }}>⚠ threshold</span>
+          <span style={{ ...S.rowValue, color: sol.yellow, fontSize: 9 }}>below minimum</span>
+        </div>
+      )}
       <div style={{ ...S.row, paddingBottom: 5 }}>
         <span style={S.rowLabel}>status</span>
         <span style={{ ...S.rowValue, color: ciColor(building.status) }}>{building.status}</span>
       </div>
+    </section>
+  );
+}
+
+function ThresholdAlertsPanel({
+  buildings,
+  districtBuildings,
+}: {
+  buildings: Building[];
+  districtBuildings: DistrictBuilding[] | null;
+}): JSX.Element | null {
+  const warned = buildings.filter((b) => b.coverageWarn);
+  const warnedDistricts = (districtBuildings ?? []).filter((d) => d.coverageWarn);
+
+  if (warned.length === 0 && warnedDistricts.length === 0) return null;
+
+  const visible = warned.slice(0, MAX_THRESHOLD_ALERTS);
+  const overflow = warned.length - visible.length;
+
+  return (
+    <section style={S.section} aria-label="Coverage threshold alerts">
+      <div style={{ ...S.sectionHeader, color: sol.yellow }}>
+        ⚠ below threshold ({warned.length})
+      </div>
+      {warnedDistricts.map((d) => (
+        <div key={d.id} style={S.row}>
+          <span style={{ ...S.rowLabel, color: sol.yellow }}>{d.label}</span>
+          <span style={{ ...S.rowValue, color: sol.yellow, fontSize: 9 }}>
+            {d.coverage >= 0 ? `${Math.round(d.coverage * 100)}%` : '—'}
+          </span>
+        </div>
+      ))}
+      {visible.map((b) => (
+        <div key={b.id} style={S.row}>
+          <span style={{ ...S.rowLabel, color: sol.yellow, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+            {b.label}
+          </span>
+          <span style={{ ...S.rowValue, color: sol.yellow, fontSize: 9 }}>
+            {b.coverage >= 0 ? `${Math.round(b.coverage * 100)}%` : '—'}
+          </span>
+        </div>
+      ))}
+      {overflow > 0 && (
+        <div style={{ ...S.row, paddingBottom: 5 }}>
+          <span style={{ ...S.rowLabel, color: sol.base00, fontSize: 9 }}>
+            …and {overflow} more
+          </span>
+        </div>
+      )}
     </section>
   );
 }
@@ -287,7 +344,7 @@ export function RightRail(): JSX.Element {
 
   // At L3: show the cursor district-building if one is active
   const districtBuildings = useMemo(
-    () => lodLevel === 'L3' ? selectDistrictBuildings(city.districts, city.buildings, city.agents) : null,
+    () => lodLevel === 'L3' ? selectDistrictBuildings(city.districts, city.buildings, city.agents, city.settings) : null,
     [lodLevel, city],
   );
   const districtBuilding = districtBuildings && cursorDistrictId
@@ -305,12 +362,18 @@ export function RightRail(): JSX.Element {
   // Show latest activities, most recent first, up to 12
   const recent = [...activities].reverse().slice(0, 12);
 
+  const warnCount = city.buildings.filter((b) => b.coverageWarn).length;
+  const showThresholdAlerts = !inspectedAgent && warnCount > 0;
+
   return (
     <aside style={S.rail} aria-label="Details">
       {inspectedAgent && <AgentInspectPanel agent={inspectedAgent} />}
       {!inspectedAgent && districtBuilding && <DistrictBuildingPanel district={districtBuilding} />}
       {!inspectedAgent && !districtBuilding && building && <BuildingPanel building={building} />}
       {showStats && <StatsPanel />}
+      {showThresholdAlerts && (
+        <ThresholdAlertsPanel buildings={city.buildings} districtBuildings={districtBuildings} />
+      )}
 
       <div style={S.sectionHeader}>activity</div>
       <section style={S.activityList} aria-label="Activity log">

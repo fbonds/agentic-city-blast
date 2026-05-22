@@ -12,7 +12,7 @@ function mkBuilding(id: string, gx: number, gy: number, gw = 4, gh = 4, gz = 3, 
   return {
     id, gx, gy, gw, gh, gz,
     districtId, label: id, language: 'ts',
-    loc: 10, coverage: 0.9, status: 'ok', editing: false, exports: 0,
+    loc: 10, coverage: 0.9, coverageWarn: false, status: 'ok', editing: false, exports: 0,
   };
 }
 
@@ -20,7 +20,7 @@ function mkDistrictBuilding(id: string, gx: number, gy: number, gw = 10, gh = 10
   return {
     id, gx, gy, gw, gh, gz,
     label: id, loc: 100, totalLoc: 100,
-    coverage: 0.9, status: 'ok',
+    coverage: 0.9, coverageWarn: false, status: 'ok',
     statusBreakdown: {}, fileCount: 5, agentCount: 0,
   };
 }

@@ -19,6 +19,7 @@ const makeBuilding = (overrides: Partial<Building>): Building => ({
   language: 'go',
   loc: 100,
   coverage: 0.8,
+  coverageWarn: false,
   status: 'ok',
   editing: false,
   exports: 3,

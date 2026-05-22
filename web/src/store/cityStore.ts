@@ -17,6 +17,7 @@ export interface Building {
   language: string;
   loc: number;
   coverage: number;
+  coverageWarn: boolean;
   status: string;
   editing: boolean;
   exports: number;
@@ -25,6 +26,11 @@ export interface Building {
   gw: number;
   gh: number;
   gz: number;
+}
+
+export interface Settings {
+  coverageThreshold: number;
+  districtThresholds: Record<string, number>;
 }
 
 export type ModelTier = 'opus' | 'sonnet' | 'haiku' | 'unknown';
@@ -86,6 +92,7 @@ export interface CityState {
   agents: Agent[];
   activities: ActivityEvent[];
   stats: RepoStats;
+  settings: Settings;
   ts: number;
 }
 
@@ -111,6 +118,7 @@ const emptyCityState: CityState = {
     testsPassing: 0,
     testsTotal: 0,
   },
+  settings: { coverageThreshold: 0.6, districtThresholds: {} },
   ts: 0,
 };
 
@@ -133,8 +141,9 @@ export interface DistrictBuilding {
   label: string;
   loc: number;
   totalLoc: number;
-  coverage: number;   // weighted average of children with known coverage; -1 if none known
-  status: string;     // worst-case: err > warn > unknown > ok
+  coverage: number;      // weighted average of children with known coverage; -1 if none known
+  coverageWarn: boolean; // true when coverage < applicable threshold
+  status: string;        // worst-case: err > warn > unknown > ok
   statusBreakdown: Record<string, number>;
   fileCount: number;
   agentCount: number;
@@ -142,7 +151,7 @@ export interface DistrictBuilding {
   gy: number;
   gw: number;
   gh: number;
-  gz: number;       // height proportional to file count
+  gz: number;            // height proportional to file count
 }
 
 const STATUS_RANK: Record<string, number> = {
@@ -158,14 +167,18 @@ function worstStatus(a: string, b: string): string {
   return ra >= rb ? a : b;
 }
 
+const DEFAULT_SETTINGS: Settings = { coverageThreshold: 0.6, districtThresholds: {} };
+
 /**
  * Pure selector: derives one DistrictBuilding per District from the current city state.
  * Used when LOD is L3. Original buildings are not modified.
+ * settings defaults to { coverageThreshold: 0.6, districtThresholds: {} } when omitted.
  */
 export function selectDistrictBuildings(
   districts: District[],
   buildings: Building[],
   agents: Agent[],
+  settings: Settings = DEFAULT_SETTINGS,
 ): DistrictBuilding[] {
   // Group buildings by district and collect building IDs per district for agent lookup
   const childrenByDistrict = new Map<string, Building[]>();
@@ -229,12 +242,17 @@ export function selectDistrictBuildings(
       agentCount += agentTargets.get(id) ?? 0;
     }
 
+    const districtThreshold =
+      settings.districtThresholds[d.id] ?? settings.coverageThreshold;
+    const coverageWarn = coverage >= 0 && coverage < districtThreshold;
+
     return {
       id: d.id,
       label: d.label,
       loc,
       totalLoc: loc,
       coverage,
+      coverageWarn,
       status,
       statusBreakdown,
       fileCount,

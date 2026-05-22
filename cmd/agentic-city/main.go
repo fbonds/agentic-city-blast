@@ -44,6 +44,8 @@ func main() {
 
 	if *demo {
 		s := generateDemoState()
+		s.Settings = model.DefaultSettings()
+		s = city.MarkCoverageThresholds(s)
 		cityState = hub.NewState(s)
 		slog.Info("demo mode", "districts", len(s.Districts), "buildings", len(s.Buildings), "agents", len(s.Agents))
 	} else {
@@ -58,6 +60,8 @@ func main() {
 		} else {
 			slog.Info("live mode: scanned", "buildings", len(initial.Buildings), "districts", len(initial.Districts))
 		}
+		initial.Settings = model.DefaultSettings()
+		initial = city.MarkCoverageThresholds(initial)
 
 		cityState = hub.NewState(initial)
 	}
@@ -92,7 +96,11 @@ func main() {
 	})
 	devMode := *demo || !repoExplicitlySet
 
-	api.New(cityState).WithDevMode(devMode).WithWSHandler(h.ServeWS).Register(mux)
+	apiServer := api.New(cityState).
+		WithDevMode(devMode).
+		WithWSHandler(h.ServeWS).
+		WithStateUpdater(cityState, cityState, h)
+	apiServer.Register(mux)
 
 	distFS, err := fs.Sub(agentcityweb.Dist, "dist")
 	if err != nil {
@@ -570,8 +578,9 @@ func autoDetectMetricsFiles(repoPath string) (coverageFiles, testResultFiles []s
 	return coverageFiles, testResultFiles
 }
 
-// runMetricsWatcher consumes MetricsWatcher updates and applies coverage and
-// test status to all buildings in state, notifying connected clients via h.
+// runMetricsWatcher consumes MetricsWatcher updates, applies coverage and test
+// status to all buildings, marks threshold warnings, and emits activity events
+// for any buildings that newly drop below threshold.
 func runMetricsWatcher(ctx context.Context, mw *repo.MetricsWatcher, state *hub.State, h *hub.Hub) {
 	defer mw.Stop()
 	for {
@@ -582,9 +591,25 @@ func runMetricsWatcher(ctx context.Context, mw *repo.MetricsWatcher, state *hub.
 			if !ok {
 				return
 			}
+			var crossings []string
 			state.Update(func(curr model.CityState) model.CityState {
-				return city.ApplyMetrics(curr, src)
+				prev := curr
+				next := city.ApplyMetrics(curr, src)
+				next = city.MarkCoverageThresholds(next)
+				crossings = city.DetectThresholdCrossings(prev, next)
+				return next
 			})
+			for _, id := range crossings {
+				label := filepath.Base(id)
+				state.AddActivity(model.ActivityEvent{
+					Timestamp: time.Now().Format(time.RFC3339),
+					Who:       "COV",
+					Message:   "Coverage below threshold: " + label,
+					Color:     "#b58900",
+					Severity:  "warn",
+				})
+				slog.Info("coverage threshold crossed", "file", id)
+			}
 			if h != nil {
 				h.Notify()
 			}

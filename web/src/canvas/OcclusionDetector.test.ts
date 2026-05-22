@@ -18,6 +18,7 @@ function mkBuilding(
     language: 'ts',
     loc: 10,
     coverage: 0.9,
+    coverageWarn: false,
     status: 'ok',
     editing: false,
     exports: 0,

@@ -38,7 +38,7 @@ export function App(): JSX.Element {
   const [canvasFocused, setCanvasFocused] = useState<boolean>(false);
 
   const districtBuildings = useMemo(
-    () => lodLevel === 'L3' ? selectDistrictBuildings(city.districts, city.buildings, city.agents) : [],
+    () => lodLevel === 'L3' ? selectDistrictBuildings(city.districts, city.buildings, city.agents, city.settings) : [],
     [lodLevel, city],
   );
 

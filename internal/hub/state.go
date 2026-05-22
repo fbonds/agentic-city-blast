@@ -120,16 +120,23 @@ func (s *State) consumeStateJSON() ([]byte, bool) {
 	return s.stateJSON, dirty
 }
 
-// deepCopyState returns a copy of cs whose slice fields own independent backing
-// arrays. All element types are value types, so a shallow clone of each slice
-// is sufficient. slices.Clone returns nil for nil input, avoiding needless
-// allocations for unpopulated fields.
+// deepCopyState returns a copy of cs whose slice and map fields own independent
+// backing storage. All element types are value types, so a shallow clone of
+// each slice is sufficient. slices.Clone returns nil for nil input, avoiding
+// needless allocations for unpopulated fields.
 func deepCopyState(cs model.CityState) model.CityState {
 	cs.Districts = slices.Clone(cs.Districts)
 	cs.Buildings = slices.Clone(cs.Buildings)
 	cs.Roads = slices.Clone(cs.Roads)
 	cs.Agents = slices.Clone(cs.Agents)
 	cs.Activities = slices.Clone(cs.Activities)
+	if cs.Settings.DistrictThresholds != nil {
+		dt := make(map[string]float64, len(cs.Settings.DistrictThresholds))
+		for k, v := range cs.Settings.DistrictThresholds {
+			dt[k] = v
+		}
+		cs.Settings.DistrictThresholds = dt
+	}
 	return cs
 }
 
