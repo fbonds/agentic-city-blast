@@ -100,6 +100,7 @@ func StartMonitor(ctx context.Context, repoPath string, cityState *hub.State, h 
 		monitor.WithSources(sources...),
 		monitor.WithSink(sink),
 		monitor.WithPollInterval(2*time.Second),
+		monitor.WithStaleThreshold(60*time.Second),
 	)
 	if err != nil {
 		slog.Error("agents: monitor create failed", "err", err)
