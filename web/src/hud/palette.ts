@@ -115,7 +115,6 @@ export function langColor(lang: string): string {
     case 'nix': return sol.blue;
     case 'svelte': return sol.orange;
     case 'vue': return sol.green;
-    case 'ruby': return sol.red;
     case 'erlang': return sol.red;
     case 'clojure': return sol.green;
     case 'elm': return sol.cyan;
