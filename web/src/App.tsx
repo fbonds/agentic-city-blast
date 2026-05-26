@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { CityRenderer } from './canvas/CityRenderer';
-import { hitTestBuildings, hitTestAgents, nearestBuildingToScreen } from './canvas/HitTester';
+import { hitTestBuildings, hitTestAgents, nearestBuildingToScreen, hitTestDistricts, nearestDistrictToScreen } from './canvas/HitTester';
 import { useAnimationFrame } from './hooks/useAnimationFrame';
 import { useCityKeyboard } from './hooks/useCityKeyboard';
 import { useCityStore, selectDistrictBuildings } from './store/cityStore';
@@ -30,6 +30,8 @@ export function App(): JSX.Element {
   const selectedBuildingId = useUiStore((s) => s.selectedBuildingId);
   const setCursor = useUiStore((s) => s.setCursor);
   const selectBuilding = useUiStore((s) => s.selectBuilding);
+  const setCursorDistrict = useUiStore((s) => s.setCursorDistrict);
+  const selectDistrict = useUiStore((s) => s.selectDistrict);
   const setCamera = useUiStore((s) => s.setCamera);
   const setZoom = useUiStore((s) => s.setZoom);
   const focusedAgentIndex = useUiStore((s) => s.focusedAgentIndex);
@@ -59,13 +61,19 @@ export function App(): JSX.Element {
         return;
       }
 
-      const hit = hitTestBuildings(renderer.camera, city.buildings, sx, sy);
-      if (hit) {
-        setCanvasCursor('pointer');
-        renderer.hoveredBuildingId = hit.id;
-      } else {
-        setCanvasCursor('default');
+      if (lodLevel === 'L3') {
+        const hit = hitTestDistricts(renderer.camera, districtBuildings, sx, sy);
+        setCanvasCursor(hit ? 'pointer' : 'default');
         renderer.hoveredBuildingId = null;
+      } else {
+        const hit = hitTestBuildings(renderer.camera, city.buildings, sx, sy);
+        if (hit) {
+          setCanvasCursor('pointer');
+          renderer.hoveredBuildingId = hit.id;
+        } else {
+          setCanvasCursor('default');
+          renderer.hoveredBuildingId = null;
+        }
       }
     },
     [city.agents, city.buildings, lodLevel, districtBuildings],
@@ -107,20 +115,30 @@ export function App(): JSX.Element {
         return;
       }
 
-      const hit = hitTestBuildings(renderer.camera, city.buildings, sx, sy);
-      if (hit) {
-        setFocusedAgentIndex(null);
-        setInspectedAgentId(null);
-        setCursor(hit.id);
-        selectBuilding(hit.id);
+      setFocusedAgentIndex(null);
+      setInspectedAgentId(null);
+
+      if (lodLevel === 'L3') {
+        const hit = hitTestDistricts(renderer.camera, districtBuildings, sx, sy);
+        if (hit) {
+          setCursorDistrict(hit.id);
+          selectDistrict(hit.id);
+        } else {
+          const nearest = nearestDistrictToScreen(renderer.camera, districtBuildings, sx, sy);
+          if (nearest) setCursorDistrict(nearest.id);
+        }
       } else {
-        setFocusedAgentIndex(null);
-        setInspectedAgentId(null);
-        const nearest = nearestBuildingToScreen(renderer.camera, city.buildings, sx, sy);
-        if (nearest) setCursor(nearest.id);
+        const hit = hitTestBuildings(renderer.camera, city.buildings, sx, sy);
+        if (hit) {
+          setCursor(hit.id);
+          selectBuilding(hit.id);
+        } else {
+          const nearest = nearestBuildingToScreen(renderer.camera, city.buildings, sx, sy);
+          if (nearest) setCursor(nearest.id);
+        }
       }
     },
-    [city.agents, city.buildings, lodLevel, districtBuildings, setCursor, selectBuilding, setFocusedAgentIndex, setInspectedAgentId],
+    [city.agents, city.buildings, lodLevel, districtBuildings, setCursor, selectBuilding, setCursorDistrict, selectDistrict, setFocusedAgentIndex, setInspectedAgentId],
   );
 
   // Initialize renderer and connect to live backend
