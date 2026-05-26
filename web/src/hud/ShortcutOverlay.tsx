@@ -63,6 +63,16 @@ const CATEGORIES: ShortcutCategory[] = [
     ],
   },
   {
+    title: 'LOD (District) Mode',
+    entries: [
+      { keys: ['⇧L'], label: 'Toggle district view' },
+      { keys: ['h', 'j', 'k', 'l'], label: 'Navigate districts' },
+      { keys: ['click'], label: 'Select district' },
+      { keys: ['Enter'], label: 'Zoom to building view' },
+      { keys: ['Esc'], label: 'Deselect district' },
+    ],
+  },
+  {
     title: 'Overlays',
     entries: [
       { keys: ['?'], label: 'Show/hide shortcuts' },

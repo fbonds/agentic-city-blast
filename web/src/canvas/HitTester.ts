@@ -26,14 +26,17 @@ function pointInPolygon(px: number, py: number, poly: [number, number][]): boole
   return inside;
 }
 
+/** Minimum geometry needed for silhouette/hit-testing. */
+interface Box { gx: number; gy: number; gw: number; gh: number; gz: number }
+
 /**
- * Outer silhouette of a building in screen coordinates.
- * Six vertices: base front → base right → top right → top back → top left → base left.
+ * Outer silhouette of a box in screen coordinates.
+ * Six vertices: base front, base right, top right, top back, top left, base left.
  * Omits the near-top corner (it always falls inside the hull for any valid box).
  */
-function buildingSilhouette(
+function boxSilhouette(
   camera: IsometricCamera,
-  b: Building,
+  b: Box,
 ): [number, number][] {
   return [
     camera.project(b.gx,        b.gy,        0),
@@ -51,7 +54,7 @@ export function hitBuilding(
   sx: number,
   sy: number,
 ): boolean {
-  return pointInPolygon(sx, sy, buildingSilhouette(camera, b));
+  return pointInPolygon(sx, sy, boxSilhouette(camera, b));
 }
 
 /**
@@ -322,5 +325,49 @@ export function nearestBuildingToScreen(
     }
   }
 
+  return best;
+}
+
+/**
+ * Return the topmost district-building at screen point (sx, sy), or null if none.
+ * Used in LOD L3 mode. Sort order matches drawDistrictBuildings (ascending gx+gy)
+ * so the visually frontmost block wins when outlines overlap.
+ */
+export function hitTestDistricts(
+  camera: IsometricCamera,
+  districts: DistrictBuilding[],
+  sx: number,
+  sy: number,
+): DistrictBuilding | null {
+  const sorted = [...districts].sort((a, b) => (a.gx + a.gy) - (b.gx + b.gy));
+  let hit: DistrictBuilding | null = null;
+  for (const d of sorted) {
+    if (pointInPolygon(sx, sy, boxSilhouette(camera, d))) hit = d;
+  }
+  return hit;
+}
+
+/**
+ * Return the district-building whose screen-projected center is nearest to
+ * (sx, sy), or null when the array is empty. Used to place the keyboard cursor
+ * when the user clicks outside any district outline at L3.
+ */
+export function nearestDistrictToScreen(
+  camera: IsometricCamera,
+  districts: DistrictBuilding[],
+  sx: number,
+  sy: number,
+): DistrictBuilding | null {
+  if (districts.length === 0) return null;
+  let best: DistrictBuilding | null = null;
+  let bestDist = Infinity;
+  for (const d of districts) {
+    const [cx, cy] = camera.project(d.gx + d.gw / 2, d.gy + d.gh / 2, d.gz / 2);
+    const dist = (cx - sx) ** 2 + (cy - sy) ** 2;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = d;
+    }
+  }
   return best;
 }

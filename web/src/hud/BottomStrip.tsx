@@ -105,11 +105,11 @@ export function BottomStrip(): JSX.Element {
 
   return (
     <div style={S.strip}>
-      <Hint keys={['h', 'j', 'k', 'l']} label="nav" />
+      <Hint keys={['h', 'j', 'k', 'l']} label={lodLevel === 'L3' ? 'district' : 'nav'} />
       <span style={S.sep}>·</span>
-      <Hint keys={['Enter']} label="select" />
+      <Hint keys={['Enter']} label={lodLevel === 'L3' ? 'zoom L2' : 'select'} />
       <span style={S.sep}>·</span>
-      <Hint keys={['Esc']} label="city" />
+      <Hint keys={['Esc']} label={lodLevel === 'L3' ? 'deselect' : 'city'} />
       <span style={S.sep}>·</span>
       <Hint keys={['R']} label="roads" color={activeColor(showRoads)} onClick={toggleRoads} />
       <Hint keys={['N']} label="labels" color={activeColor(showLabels)} onClick={toggleLabels} />
