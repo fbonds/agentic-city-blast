@@ -72,6 +72,8 @@ func main() {
 	covHistory := model.NewCoverageHistory(model.HistoryCap)
 
 	if *demo {
+		// Demo mode has no real agent monitor, so mark the hub ready immediately.
+		h.SetReady()
 		go runDemoTicker(ctx, cityState, h)
 	}
 

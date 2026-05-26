@@ -54,22 +54,24 @@ func StartMonitor(ctx context.Context, repoPath string, cityState *hub.State, h 
 	sources := buildSources()
 	if len(sources) == 0 {
 		slog.Info("agents: no agentwatch sources found — city will render without agents")
+		if h != nil {
+			h.SetReady()
+		}
 		return nil
 	}
 
 	tracker := New(absRepo)
 
-	// mon is declared before the closure so the closure captures a reference to
-	// the variable; by the time the closure is called (inside mon.Run), mon is
-	// fully initialised.
+	// Declared before the closure so the closure captures the fully-initialised
+	// value when it runs inside mon.Run.
 	var mon *monitor.Monitor
 
 	var (
 		debounceMu    sync.Mutex
 		debounceTimer *time.Timer
+		readyOnce     sync.Once
 	)
 
-	// applySnapshot runs after the event stream has quieted for sinkDebounceDelay.
 	applySnapshot := func() {
 		sessions := mon.Snapshot()
 		syncTracker(tracker, sessions, absRepo)
@@ -78,6 +80,7 @@ func StartMonitor(ctx context.Context, repoPath string, cityState *hub.State, h 
 			return curr
 		})
 		if h != nil {
+			readyOnce.Do(h.SetReady)
 			h.Notify()
 		}
 	}
@@ -104,6 +107,9 @@ func StartMonitor(ctx context.Context, repoPath string, cityState *hub.State, h 
 	)
 	if err != nil {
 		slog.Error("agents: monitor create failed", "err", err)
+		if h != nil {
+			h.SetReady()
+		}
 		return nil
 	}
 

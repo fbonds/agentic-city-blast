@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -48,6 +49,10 @@ func checkOrigin(r *http.Request) bool {
 // Two broadcast cadences:
 //   - 100 ms ticker: picks up agent-state changes.
 //   - Notify(): immediate diff+broadcast triggered by the repo watcher.
+//
+// Clients that connect before SetReady() is called are held in pendingClients
+// and do not receive state.full or any patches until the first agent scan
+// settles. This prevents phantom agents from appearing on initial page load.
 type Hub struct {
 	state      *State
 	clients    map[*client]struct{}
@@ -58,6 +63,15 @@ type Hub struct {
 	// done is closed when Run returns, unblocking client goroutines that
 	// would otherwise wait forever on register/unregister.
 	done chan struct{}
+
+	// readyCh is closed by SetReady once the agent monitor has completed its
+	// first scan. Managed by readyOnce for idempotent close.
+	readyCh   chan struct{}
+	readyOnce sync.Once
+
+	// ready and pendingClients are accessed exclusively from the Run goroutine.
+	ready          bool
+	pendingClients []*client
 }
 
 // New creates a Hub backed by the given State.
@@ -69,7 +83,16 @@ func New(s *State) *Hub {
 		unregister: make(chan *client),
 		notifyCh:   make(chan struct{}, 1),
 		done:       make(chan struct{}),
+		readyCh:    make(chan struct{}),
 	}
+}
+
+// SetReady signals that the agent monitor has completed its first stable scan
+// and the city's agent roster reflects reality. Clients that connected before
+// this call receive their state.full snapshot now; subsequent clients connect
+// without any delay. Safe to call from any goroutine; idempotent.
+func (h *Hub) SetReady() {
+	h.readyOnce.Do(func() { close(h.readyCh) })
 }
 
 // Notify signals that the city state has changed and a patch should be
@@ -82,7 +105,7 @@ func (h *Hub) Notify() {
 }
 
 // ServeWS upgrades the HTTP connection to WebSocket and registers the client
-// with the hub. The client immediately receives a state.full snapshot.
+// with the hub. The client receives a state.full snapshot once the hub is ready.
 func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -113,11 +136,28 @@ func (h *Hub) Run(ctx context.Context) {
 				delete(h.clients, c)
 				close(c.send)
 			}
+			for _, c := range h.pendingClients {
+				close(c.send)
+			}
+			h.pendingClients = nil
 			return
 
+		case <-h.readyCh:
+			h.readyCh = nil // prevent re-firing on closed channel
+			h.ready = true
+			for _, c := range h.pendingClients {
+				h.clients[c] = struct{}{}
+				h.sendFull(c)
+			}
+			h.pendingClients = nil
+
 		case c := <-h.register:
-			h.clients[c] = struct{}{}
-			h.sendFull(c)
+			if !h.ready {
+				h.pendingClients = append(h.pendingClients, c)
+			} else {
+				h.clients[c] = struct{}{}
+				h.sendFull(c)
+			}
 
 		case c := <-h.unregister:
 			if _, ok := h.clients[c]; ok {
