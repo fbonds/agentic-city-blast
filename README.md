@@ -1,41 +1,37 @@
-# Agentic City
+# agentic-city-blast
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+A fork of [mrf/agentic-city](https://github.com/mrf/agentic-city) by Mark Ferree.
 
-Manage AI coding agents like a SimCity mayor. Buildings are files, districts are directories, UFO agents are your running Claude/Codex/Gemini sessions.
+**This is a thought experiment, not a project.** Nothing in this fork is implemented yet — the code is bit-for-bit identical to upstream. The idea lives in [encoding-redesign.md](encoding-redesign.md); the implementation may or may not follow.
 
-![Agentic City screenshot](docs/screenshot.png)
+## Why this exists
 
-Agentic City turns your codebase into a living isometric city. File sizes determine building heights, directory structure defines districts, and each active AI coding session appears as a UFO flying overhead. Changes in the repo — new files, edits, agent activity — flow in real-time over WebSockets so you always see what's happening and where.
+The upstream project is remarkable. It turns a codebase into a living isometric city — files become buildings, directories become districts, AI coding sessions appear as UFOs flying overhead, and everything updates in real time over WebSockets. It is a genuinely impressive piece of work, generously published under MIT, and I would not have thought to build it.
 
-**Status:** Phase 1 (see the city) is complete. Phase 2 (dispatch and control agents from the UI) is in progress.
+I came across it through a coworker. While chatting with Claude Code about the premise, one thing kept circling: the dominant visual channel — building height — is driven by file size. File size is the cheapest signal to compute, but it may not be the most useful one for the use case the city is pitched at (orchestrating AI agents). And so: *this is awesome — I wonder what it would be like if the metric were something else though.*
 
-## Learn More
+The sketch:
 
-Architecture, design decisions, and the full keyboard binding table are in **[DESIGN.md](DESIGN.md)**.
+- **Height** would encode **blast radius** — how many files transitively depend on this one.
+- **Color** would encode **churn** — how often the file has changed recently.
 
-## Quick Start
+That's it. The reasoning, the code it would touch, and the open decisions are all in [encoding-redesign.md](encoding-redesign.md).
+
+## Honest caveats
+
+I genuinely do not know if this will work, or if it will be of value to anyone beyond satisfying my own curiosity. The dependency graph this would build on is import-extraction-based, and upstream itself flags it as approximate, so blast-radius numbers would inherit that uncertainty. It is entirely possible the result reads worse than the original.
+
+This is also not a critique of upstream, which I think is excellent. The reason it lives in a fork rather than a PR is that the encoding swap conflicts with upstream's stated thesis ("file sizes determine building heights"), and asking Mark to take that on would not be respectful of his vision. Any dependency-analyzer improvements that fall out of this are vision-neutral and I would be happy to offer them back.
+
+## Running it
+
+Unchanged from upstream. See [DESIGN.md](DESIGN.md) for architecture and keyboard bindings:
 
 ```bash
-git clone <repo> && cd agentic-city
-make dev          # start frontend dev server (http://localhost:5173)
-make run          # start Go backend (http://localhost:8080)
+make dev          # frontend dev server (http://localhost:5173)
+make run          # Go backend (http://localhost:8080)
 ```
 
-Open `http://localhost:5173` and point it at a repo.
+## License
 
-## Keyboard Shortcuts
-
-| Key | Action |
-|-----|--------|
-| `←` `→` `↑` `↓` | Pan city |
-| `+` / `-` | Zoom in / out |
-| `Tab` | Cycle through active agents |
-| `Enter` | Focus selected agent |
-| `Esc` | Deselect / close panel |
-| `R` | Recenter view |
-| `?` | Toggle help |
-
-## Stack
-
-Go backend · React + Canvas frontend · [agentwatch](https://github.com/mrf/agentwatch) for agent detection
+MIT, retaining Mark Ferree's original copyright. See [LICENSE](LICENSE).

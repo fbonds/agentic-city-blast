@@ -260,3 +260,93 @@ These are separate deliverables, to be done after this design doc is approved:
   phrasing for blast radius before churn ships).
 - Whether the GitHub repo-description field should spell out "blast radius =
   how much breaks if you touch it" for readers with no project context.
+
+---
+
+## 7. CLI review (2026-05-28)
+
+This review was added by Claude Code (CLI) after reading the doc against the
+current source. The doc's web-counterpart authorship is otherwise preserved.
+All load-bearing claims were spot-checked: edge direction verified in
+`internal/deps/analyzer_test.go:237`; position-by-directory verified in
+`internal/layout/engine.go`; the `LOC→GZ` assignment verified in
+`internal/layout/packer.go:122`.
+
+### What holds up
+
+- **Premise.** File size is a poor signal for the agent-orchestration
+  decision ("where do I send an agent, and what's the risk"). The dominant
+  visual channel should carry structural risk, not size.
+- **Phasing inversion.** Blast radius really is cheaper than churn. The graph
+  exists; churn data does not. Ship in the order proposed.
+- **Edge direction.** "Blast radius = files that reach X by reversing
+  `FromID → ToID`" matches the code.
+- **Tri-state read.** Tall+hot / tall+cool / short+hot is a stronger
+  justification for color = churn than churn alone would be.
+- **Honest caveat.** The edge-confidence inheritance disclaimer is
+  appropriately humble; the relative-ordering escape valve defangs the
+  strongest reviewer objection.
+
+### Issues worth resolving before implementation
+
+1. **§5.1 position-stability wording is slightly loose.** District assignment
+   is directory-anchored, but *position within a district* is set by
+   `packDistrict`, which sorts on `LOC desc, ID asc`
+   (`internal/layout/packer.go:27`). The conclusion still holds — blast
+   radius doesn't feed the packer's sort key — but the phrasing "position is
+   directory-anchored, not blast-radius-derived" papers over the LOC sort.
+   Recommend: "blast radius does not feed the packer's sort key, so
+   within-district position is unaffected."
+
+2. **§5.1 doesn't say what GZ a brand-new file gets between rescans.**
+   `MergeBuildings` preserves `GZ` for existing entries
+   (`internal/city/builder.go:132`), but for a brand-new file `u.GZ` is
+   whatever the incremental path produces. In the LOC world this was
+   trivially `LOC/30`; in the blast-radius world there is no answer without
+   re-running `BuildGraph`. Phase 1 needs an explicit rule — recommend new
+   buildings get the minimum height (3.0) until the next full rescan
+   promotes them. Otherwise they render flat (z=0) and look like a bug.
+
+3. **The `footprint(loc)` change isolates better than the doc says — say
+   so.** `measurePackHeight` and `footprintScale` only consume `fw, fh` from
+   `footprint()`; they discard `z` (`internal/layout/packer.go:96`, `:72`).
+   So keeping `footprint(loc)` for w/h and adding a separate
+   `height(blastRadius)` leaves the entire scale/pack pipeline untouched.
+   Worth committing to that split in §3 rather than leaving footprint as
+   "open" — it converts a worry into a small Phase 1 plus.
+
+4. **The 30 ceiling is load-bearing, not just a guideline.** `packDistrict`
+   rescales footprints to fit a district but does not rescale `z`. A
+   long-tail blast-radius value with no clamp would clip the camera frustum.
+   §5 should make "clamp to [3,30]" a hard requirement of the normalization
+   decision, not a "candidate approach."
+
+5. **Confidence weighting is an unanswered knob.** Edges carry
+   `Confidence ∈ {exact, inferred, weak}` (`internal/model/model.go:101`).
+   Should `weak` transitive paths pump blast radius as hard as `exact` ones?
+   Recommend pre-deciding *binary count* for Phase 1: treat all edges equal.
+   Confidence-weighting muddies the "N files depend on this" semantics, and
+   decimals don't read off a skyline. This also decouples analyzer-quality
+   work from the height-encoding work.
+
+6. **§2 identifies the redundancy trap; §5 churn-noise doesn't close it.**
+   §2 rules out churn-as-height because "agents *are* much of the churn."
+   Color carries the same risk: agent-driven commits will dominate the churn
+   signal and re-encode the UFO layer. §5's lockfile/generated filters don't
+   address this — exclusion would require correlating agentwatch session
+   windows with `git log` authorship. Flag in §5 as an open Phase 2 problem,
+   not just noise filtering.
+
+### Smaller items
+
+- The fourth quadrant — short + cool — goes unmentioned in §2. The
+  implication (most of the city stays quiet — a feature, not a bug) is
+  worth one sentence so readers don't expect a uniformly-vivid skyline.
+- §6 README rewrite list is correct. The DESIGN.md "light touch" pointer is
+  the right call.
+
+### Net
+
+Structurally sound; the items above are tightening, not redirection. The
+biggest gap is #2 (new-file GZ between rescans) — that question will surface
+on day one of Phase 1.
