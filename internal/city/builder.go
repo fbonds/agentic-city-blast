@@ -16,6 +16,12 @@ import (
 	"github.com/mferree/agent-city/internal/repo"
 )
 
+// minBuildingHeight is the floor for GZ on incremental updates where a true
+// blast-radius-derived height is not yet available. Matches the lower bound
+// of layout.heightFromBlastRadius — kept here as a literal to avoid a layout
+// package import from the merge path.
+const minBuildingHeight = 3.0
+
 // ApplyMetrics overlays coverage ratios and test status from src onto the buildings
 // in state. Only buildings with entries in src are updated; all others retain their
 // existing Coverage and Status values. Stats and Timestamp are recomputed.
@@ -76,7 +82,9 @@ func gitOutput(dir string, args ...string) (string, error) {
 }
 
 // AssembleState builds a CityState from pre-scanned buildings plus git metadata.
-// It runs the layout engine and dependency analyzer, then computes summary stats.
+// It runs the dependency analyzer to compute the import graph, derives each
+// building's blast radius from it, then runs the layout engine (which uses
+// blast radius to set building heights), and finally computes summary stats.
 // readContent is called per-file by the dependency analyzer (best-effort; errors skipped).
 func AssembleState(
 	buildings []model.Building,
@@ -85,8 +93,23 @@ func AssembleState(
 	layoutCfg layout.Config,
 	depsCfg deps.Config,
 ) model.CityState {
-	laid := layout.Layout(buildings, layoutCfg)
-	roads := deps.BuildGraph(laid.Buildings, readContent, depsCfg)
+	// Build the import graph before layout so blast radius can be populated
+	// on each building and consumed by the packer as it assigns heights.
+	roads := deps.BuildGraph(buildings, readContent, depsCfg)
+
+	ids := make([]string, len(buildings))
+	for i, b := range buildings {
+		ids[i] = b.ID
+	}
+	blastRadius := deps.Compute(ids, roads)
+
+	enriched := make([]model.Building, len(buildings))
+	for i, b := range buildings {
+		b.BlastRadius = blastRadius[b.ID]
+		enriched[i] = b
+	}
+
+	laid := layout.Layout(enriched, layoutCfg)
 
 	return model.CityState{
 		RepoInfo:  repoInfo,
@@ -117,6 +140,11 @@ func BuildState(repoPath string, cfg BuildConfig) (model.CityState, error) {
 // Layout position fields (GX/GY/GW/GH/GZ) are preserved from the existing entry
 // when the file already has a non-zero footprint, so the city map stays stable.
 // Stats and Timestamp are recomputed on every call.
+//
+// Brand-new buildings (no prior entry) have no blast radius yet — that is
+// only computed during a full rescan — so their GZ is floored to the minimum
+// visible height to avoid rendering them flat (GZ=0) until the next rescan
+// promotes them to their true height.
 func MergeBuildings(current model.CityState, updates []model.Building) model.CityState {
 	byID := make(map[string]model.Building, len(current.Buildings))
 	for _, b := range current.Buildings {
@@ -136,6 +164,13 @@ func MergeBuildings(current model.CityState, updates []model.Building) model.Cit
 			u.GW = existing.GW
 			u.GH = existing.GH
 			u.GZ = existing.GZ
+		}
+		// Floor GZ at the minimum visible height. Applies to brand-new
+		// buildings (no prior layout) and to any update path that did not
+		// populate GZ — without this, new files would render flat until the
+		// next full rescan computes their blast radius.
+		if u.GZ < minBuildingHeight {
+			u.GZ = minBuildingHeight
 		}
 		byID[u.ID] = u
 	}

@@ -40,7 +40,7 @@ func packDistrict(buildings []model.Building, bx, by, bw, bh float64) []model.Bu
 	shelfH := 0.0
 
 	for i := range out {
-		fw, fh, fz := footprint(out[i].LOC)
+		fw, fh := footprint(out[i].LOC)
 		fw *= scale
 		fh *= scale
 
@@ -55,7 +55,7 @@ func packDistrict(buildings []model.Building, bx, by, bw, bh float64) []model.Bu
 		out[i].GY = curY
 		out[i].GW = fw
 		out[i].GH = fh
-		out[i].GZ = fz
+		out[i].GZ = heightFromBlastRadius(out[i].BlastRadius)
 
 		curX += fw + gutterSize
 		if fh > shelfH {
@@ -98,7 +98,7 @@ func measurePackHeight(buildings []model.Building, bw, scale float64) float64 {
 	curY := gutterSize
 	shelfH := 0.0
 	for _, b := range buildings {
-		fw, fh, _ := footprint(b.LOC)
+		fw, fh := footprint(b.LOC)
 		fw *= scale
 		fh *= scale
 		if curX+fw+gutterSize > bw && curX > gutterSize {
@@ -114,16 +114,37 @@ func measurePackHeight(buildings []model.Building, bw, scale float64) float64 {
 	return curY + shelfH + gutterSize
 }
 
-// footprint returns the (width, depth, height) for a building with the given LOC.
+// footprint returns the (width, depth) for a building with the given LOC.
 //
 //	w = clamp(√(LOC/20), 4, 12)
 //	h = w × 0.8   (footprint depth)
-//	z = clamp(LOC/30, 3, 30)  (visual height)
-func footprint(loc int) (float64, float64, float64) {
+//
+// Height (GZ) is derived from blast radius, not LOC; see heightFromBlastRadius.
+// Keeping a faint LOC read on the footprint is the working default — file size
+// is the cheapest signal and "how much code is here" is mild useful context,
+// just not worth the dominant visual channel.
+func footprint(loc int) (float64, float64) {
 	w := clamp(math.Sqrt(float64(loc)/20.0), 4.0, 12.0)
 	h := w * 0.8
-	z := clamp(float64(loc)/30.0, 3.0, 30.0)
-	return w, h, z
+	return w, h
+}
+
+// heightFromBlastRadius returns a building's visual height (GZ) from its blast
+// radius — the count of files that transitively depend on it.
+//
+//	z = clamp(3 + 3·log₂(1 + br), 3, 30)
+//
+// Log scale handles the long-tailed dependent-count distribution: each
+// doubling of dependents adds a constant slice of height. The [3, 30] window
+// is required by the camera/pack pipeline (packDistrict scales footprints to
+// fit a district rectangle, but does not scale z; values above 30 would clip
+// the camera frustum).
+func heightFromBlastRadius(br int) float64 {
+	if br < 0 {
+		br = 0
+	}
+	z := 3.0 + 3.0*math.Log2(1.0+float64(br))
+	return clamp(z, 3.0, 30.0)
 }
 
 func clamp(v, lo, hi float64) float64 {

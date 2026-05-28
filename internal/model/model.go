@@ -85,11 +85,12 @@ type Building struct {
 	Status       string  `json:"status"`       // "ok" | "warn" | "err" | "unknown"
 	Editing      bool    `json:"editing"`      // yellow pulse rings on roof
 	Exports      int     `json:"exports"`
-	GX           float64 `json:"gx"` // grid position
+	BlastRadius  int     `json:"blastRadius"` // count of files that transitively depend on this one
+	GX           float64 `json:"gx"`          // grid position
 	GY           float64 `json:"gy"`
 	GW           float64 `json:"gw"` // footprint
 	GH           float64 `json:"gh"`
-	GZ           float64 `json:"gz"` // height (∝ LOC)
+	GZ           float64 `json:"gz"` // height (∝ blast radius)
 }
 
 // Road represents a dependency edge between two buildings.

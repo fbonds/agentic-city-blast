@@ -115,6 +115,49 @@ func TestAssembleState_Roads(t *testing.T) {
 	}
 }
 
+// TestAssembleState_BlastRadiusComputed verifies that the dependency graph is
+// turned into a per-building blast-radius count, and that the count drives a
+// non-minimum building height (GZ > 3.0) for files with dependents.
+func TestAssembleState_BlastRadiusComputed(t *testing.T) {
+	buildings := []model.Building{
+		{ID: "src/main.ts", Language: "ts", LOC: 100},
+		{ID: "src/utils.ts", Language: "ts", LOC: 50},
+	}
+	files := map[string]string{
+		"src/main.ts":  `import { helper } from './utils';`,
+		"src/utils.ts": `export const helper = () => {};`,
+	}
+	state := AssembleState(buildings, model.RepoInfo{}, mapReader(files), layout.Config{}, deps.Config{})
+
+	var main, utils model.Building
+	for _, b := range state.Buildings {
+		switch b.ID {
+		case "src/main.ts":
+			main = b
+		case "src/utils.ts":
+			utils = b
+		}
+	}
+	if main.ID == "" || utils.ID == "" {
+		t.Fatalf("expected both buildings present; got %+v", state.Buildings)
+	}
+
+	// utils.ts is depended on by main.ts → blast radius 1.
+	if utils.BlastRadius != 1 {
+		t.Errorf("utils.ts BlastRadius = %d, want 1", utils.BlastRadius)
+	}
+	// main.ts has no incoming dependencies → blast radius 0.
+	if main.BlastRadius != 0 {
+		t.Errorf("main.ts BlastRadius = %d, want 0", main.BlastRadius)
+	}
+
+	// Blast radius must feed height. utils.ts (BR=1) → 6.0; main.ts (BR=0) → 3.0.
+	if utils.GZ <= main.GZ {
+		t.Errorf("expected utils.ts (BR=1) taller than main.ts (BR=0); got utils GZ=%.3f main GZ=%.3f",
+			utils.GZ, main.GZ)
+	}
+}
+
 func TestAssembleState_Stats(t *testing.T) {
 	buildings := []model.Building{
 		{ID: "a.go", Language: "go", LOC: 100, Coverage: 0.8},
@@ -211,6 +254,36 @@ func TestMergeBuildings_AddNew(t *testing.T) {
 	}
 	if next.Stats.FileCount != 2 {
 		t.Errorf("Stats.FileCount = %d, want 2", next.Stats.FileCount)
+	}
+}
+
+// TestMergeBuildings_NewFileFloorGZ verifies that a building seen for the
+// first time via the incremental merge path renders at minimum visible height
+// rather than flat (GZ=0). Blast radius for a new file is only computed on
+// the next full rescan; until then it must not look like a broken tile.
+func TestMergeBuildings_NewFileFloorGZ(t *testing.T) {
+	current := model.CityState{
+		Buildings: []model.Building{
+			{ID: "old.ts", LOC: 100, GX: 1, GY: 2, GW: 5, GH: 4, GZ: 10},
+		},
+	}
+	updates := []model.Building{
+		{ID: "new.ts", LOC: 30, Language: "ts"}, // no GZ
+	}
+	next := MergeBuildings(current, updates)
+
+	var found *model.Building
+	for i := range next.Buildings {
+		if next.Buildings[i].ID == "new.ts" {
+			found = &next.Buildings[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("new.ts missing from merged state")
+	}
+	if found.GZ < 3.0 {
+		t.Errorf("new.ts GZ = %.3f, want >= 3.0 (minimum height floor)", found.GZ)
 	}
 }
 

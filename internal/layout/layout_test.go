@@ -182,28 +182,66 @@ func TestFootprint(t *testing.T) {
 		name  string
 		loc   int
 		wantW float64
-		wantZ float64
 	}{
-		// LOC=0: √(0/20)=0 → clamped to w=4; z=0/30=0 → clamped to z=3
-		{"zero LOC clamps to min", 0, 4.0, 3.0},
-		// LOC=100000: √(100000/20)=√5000≈70.7 → clamped to w=12; z=100000/30≈3333 → clamped to z=30
-		{"large LOC clamps to max", 100000, 12.0, 30.0},
-		// LOC=500: √(500/20)=√25=5 → w=5; z=500/30≈16.67
-		{"middle range unclamped", 500, 5.0, 500.0 / 30.0},
+		// LOC=0: √(0/20)=0 → clamped to w=4
+		{"zero LOC clamps to min", 0, 4.0},
+		// LOC=100000: √(100000/20)=√5000≈70.7 → clamped to w=12
+		{"large LOC clamps to max", 100000, 12.0},
+		// LOC=500: √(500/20)=√25=5 → w=5
+		{"middle range unclamped", 500, 5.0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			w, h, z := footprint(tc.loc)
+			w, h := footprint(tc.loc)
 			if math.Abs(w-tc.wantW) > eps {
 				t.Errorf("w = %.6f, want %.6f", w, tc.wantW)
 			}
 			if math.Abs(h-w*0.8) > eps {
 				t.Errorf("h = %.6f, want %.6f (w×0.8)", h, w*0.8)
 			}
-			if math.Abs(z-tc.wantZ) > 0.001 {
-				t.Errorf("z = %.6f, want %.6f", z, tc.wantZ)
+		})
+	}
+}
+
+// ---- heightFromBlastRadius tests --------------------------------------------
+
+func TestHeightFromBlastRadius(t *testing.T) {
+	cases := []struct {
+		name string
+		br   int
+		want float64
+	}{
+		// log₂(1+0) = 0 → 3 + 0 = 3 (also the minimum clamp).
+		{"zero deps → minimum height", 0, 3.0},
+		// log₂(1+1) = 1 → 3 + 3 = 6.
+		{"one dependent", 1, 6.0},
+		// log₂(1+7) = 3 → 3 + 9 = 12.
+		{"seven dependents", 7, 12.0},
+		// Long-tail value: 1M dependents → log₂ ≈ 20 → 3+60 → clamped to 30.
+		{"long tail clamps to max", 1_000_000, 30.0},
+		// Defensive: negative input should not panic; treated as zero.
+		{"negative input safely treated as zero", -5, 3.0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := heightFromBlastRadius(tc.br)
+			if math.Abs(got-tc.want) > 0.01 {
+				t.Errorf("got %.6f, want %.6f", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestHeightFromBlastRadius_MonotonicUnderClamp verifies that within the
+// unclamped range, more dependents always yields strictly greater height.
+func TestHeightFromBlastRadius_MonotonicUnderClamp(t *testing.T) {
+	prev := heightFromBlastRadius(0)
+	for br := 1; br <= 100; br++ {
+		got := heightFromBlastRadius(br)
+		if got < prev {
+			t.Errorf("non-monotonic at br=%d: %.4f < prev %.4f", br, got, prev)
+		}
+		prev = got
 	}
 }
 
