@@ -86,6 +86,7 @@ type Building struct {
 	Editing      bool    `json:"editing"`      // yellow pulse rings on roof
 	Exports      int     `json:"exports"`
 	BlastRadius  int     `json:"blastRadius"` // count of files that transitively depend on this one
+	Churn        float64 `json:"churn"`        // normalized [0,1] recent git change frequency
 	GX           float64 `json:"gx"`          // grid position
 	GY           float64 `json:"gy"`
 	GW           float64 `json:"gw"` // footprint

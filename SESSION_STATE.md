@@ -1,4 +1,4 @@
-# Session handoff — Phase 2b complete
+# Session handoff — Phase 3 complete
 
 **Last touched:** 2026-05-29. Terminal Claude Code session in this directory.
 
@@ -6,45 +6,46 @@
 
 ## Committed and pushed
 
-Everything below is committed on `main`. Working tree is clean.
+Everything through Phase 2b is committed on `main`.
 
-- **Phase 1:** Blast radius → building height. `internal/deps/blastradius.go`
-  computes transitive dependents via reverse BFS.
-  `internal/layout/packer.go:heightFromBlastRadius` uses
-  `clamp(3 + 3·log₂(1+BR), 3, 30)`. `internal/model/model.go` has
-  `BlastRadius` field. `internal/city/builder.go:AssembleState` wires it up.
+## Uncommitted on disk right now
 
-- **Phase 1.5a — Footprint refactor:** `internal/layout/packer.go:footprint()`
-  switched from `LOC` to `BlastRadius`. `w = clamp(4 + √BR, 4, 12)`,
-  `h = 0.8w`.
+### Phase 3 — Churn as color (the encoding redesign's final piece)
 
-- **Phase 1.5b — MergeBuildings bug fix:** `internal/city/builder.go`
-  preserves `BlastRadius` on incremental edits (same as `GZ`).
-  Regression test in `internal/city/builder_test.go`.
+**Backend:**
+- `internal/model/model.go`: `Churn float64` field added to Building.
+- `internal/repo/churn.go` (new): `ComputeChurn` runs
+  `git log --since=90days --name-only --format="" --diff-filter=AMRC`,
+  `parseChurnOutput` counts commits per file, `NormalizeChurn` applies
+  log normalization (`log(1+count)/log(1+max)`) to [0,1].
+- `internal/repo/churn_test.go` (new): 13 table-driven tests for parsing,
+  normalization, and config defaults.
+- `internal/city/builder.go`: `AssembleState` gains a `churn` parameter.
+  `BuildState` calls `ComputeChurn` + `NormalizeChurn` (best-effort).
+  `MergeBuildings` preserves `Churn` on incremental updates.
+- `internal/city/builder_test.go`: 3 new tests (`ChurnPopulated`,
+  `ChurnNil`, `PreservesChurn`), all existing `AssembleState` calls updated.
+- `cmd/agentic-city/main.go`: demo buildings get random churn values.
 
-- **Phase 1.5c — Frontend null guard:** `web/src/store/cityStore.ts`
-  `districtThresholds?.[]` optional chaining. Backend sends `null` not `{}`.
+**Frontend:**
+- `web/src/store/cityStore.ts`: `churn: number` on Building interface.
+- `web/src/hud/palette.ts`: `churnColor()` — 5-stop ramp
+  (cyan → blue → yellow → orange → red).
+- `web/src/canvas/BuildingRenderer.ts`: `LANG_COLORS` removed, replaced
+  with `churnColor(b.churn)`. Header comment updated.
+- `web/src/hud/RightRail.tsx`: churn row in BuildingPanel (shows percentage
+  or "cold").
+- 4 test files: `churn: 0` added to mock buildings.
 
-- **Phase 2a — Treemap district sizing:** `internal/layout/engine.go` uniform
-  grid replaced with `squarify()` weighted by total footprint area per
-  district. No more `__pad_` placeholder districts. District GH expands if
-  packed buildings overflow. Tests updated in
-  `internal/layout/layout_test.go` (proportional area, no padding, count
-  matches content).
+**Docs:**
+- `README.md`: Phase 3 marked Done, churn description updated, known issue
+  added for agent-driven churn noise.
+- `SESSION_STATE.md`: this file.
+- `encoding-redesign.md`: not yet updated for Phase 3 (do next).
+- `.gitignore`: screenshot image patterns added.
 
-- **Phase 2b — HUD legend update:** `web/src/store/cityStore.ts` `Building`
-  interface now includes `blastRadius: number`. `web/src/hud/RightRail.tsx`
-  shows blast radius in the building detail panel. Four test files updated
-  with `blastRadius: 0` in mock buildings. TypeScript clean, ESLint clean,
-  all 116 frontend tests pass.
-
-- **README.md:** Updated to WIP status with progress table and known issues.
-
-- **encoding-redesign.md:** Updated — status, decisions resolved (height
-  normalization, footprint, cross-district compression, confidence weighting),
-  phase sequencing reflects actual progress.
-
-- **LICENSE:** Fletcher Bonds copyright line added alongside Mark Ferree's.
+**Tests:** `go test ./internal/...` all green. `go vet` clean.
+TypeScript clean, ESLint clean, all 116 frontend tests pass.
 
 ## What's running
 
@@ -65,7 +66,8 @@ Browser: <http://localhost:5173>.
 
 | Priority | Item | Notes |
 |----------|------|-------|
-| 1 | Churn pipeline (Phase 3) | Git history analysis, recency-weighted score, color mapping. Net-new data pipeline. |
+| 1 | Commit Phase 3 + all uncommitted work | Working tree has significant changes. |
+| 2 | Update `encoding-redesign.md` for Phase 3 | Mark churn decisions as resolved. |
 | — | `encoding-redesign.md` §6 | Companion doc tasks (DESIGN.md pointer). Low priority. |
 
 ## Known issues
@@ -73,15 +75,17 @@ Browser: <http://localhost:5173>.
 - **Agent overlay line cap:** Backend logs `parse failed: line exceeds size
   cap: 1368464 > 1048576` warnings from agentwatch hitting an upstream JSONL
   line cap. Agent tracking still works but some session updates are dropped.
-  Separate issue from this fork's work.
+- **Agent-driven churn noise:** Agents are much of the churn, so the signal
+  partly re-encodes the live UFO layer. Filtering would require correlating
+  agentwatch sessions with git authorship — flagged, not yet addressed.
 
 ## How to verify visually
 
 Reload <http://localhost:5173> after the backend is up.
 
-- Districts should be **different sizes** — the treemap gives more canvas area
-  to districts with higher total blast radius.
-- `internal/model/coverage_history.go` should still be the tallest building.
-- `web/src/store/cityStore.ts` should now be visually comparable across
-  districts (no longer crushed by dense-district packing).
-- Selecting a building in the RightRail should show **blast radius** above LOC.
+- Buildings should be **tinted by churn**: cyan (cold) → red (hot).
+- Most buildings in a young fork will be cyan/blue; recently touched files
+  (builder.go, engine.go, packer.go) should be warmer.
+- Districts should be **different sizes** (treemap by footprint area).
+- Selecting a building shows **blast radius**, **churn**, and **LOC** in
+  the RightRail.

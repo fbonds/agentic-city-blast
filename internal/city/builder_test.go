@@ -27,7 +27,7 @@ func mapReader(files map[string]string) func(string) ([]byte, error) {
 
 func TestAssembleState_Empty(t *testing.T) {
 	info := model.RepoInfo{Name: "test-repo", Branch: "main"}
-	state := AssembleState(nil, info, noopReader, layout.Config{}, deps.Config{})
+	state := AssembleState(nil, info, noopReader, layout.Config{}, deps.Config{}, nil)
 
 	if state.RepoInfo.Name != "test-repo" {
 		t.Errorf("RepoInfo.Name = %q, want %q", state.RepoInfo.Name, "test-repo")
@@ -51,7 +51,7 @@ func TestAssembleState_Empty(t *testing.T) {
 
 func TestAssembleState_Timestamp(t *testing.T) {
 	before := time.Now().UnixMilli()
-	state := AssembleState(nil, model.RepoInfo{}, noopReader, layout.Config{}, deps.Config{})
+	state := AssembleState(nil, model.RepoInfo{}, noopReader, layout.Config{}, deps.Config{}, nil)
 	after := time.Now().UnixMilli()
 
 	if state.Timestamp < before || state.Timestamp > after {
@@ -72,7 +72,7 @@ func TestAssembleState_BuildingsAndDistricts(t *testing.T) {
 	}
 
 	info := model.RepoInfo{Name: "myrepo", Branch: "main", HeadCommit: "abc1234"}
-	state := AssembleState(buildings, info, mapReader(files), layout.Config{}, deps.Config{})
+	state := AssembleState(buildings, info, mapReader(files), layout.Config{}, deps.Config{}, nil)
 
 	if len(state.Buildings) != 3 {
 		t.Errorf("Buildings: want 3, got %d", len(state.Buildings))
@@ -99,7 +99,7 @@ func TestAssembleState_Roads(t *testing.T) {
 		"src/utils.ts": `export const helper = () => {};`,
 	}
 
-	state := AssembleState(buildings, model.RepoInfo{}, mapReader(files), layout.Config{}, deps.Config{})
+	state := AssembleState(buildings, model.RepoInfo{}, mapReader(files), layout.Config{}, deps.Config{}, nil)
 
 	found := false
 	for _, r := range state.Roads {
@@ -127,7 +127,7 @@ func TestAssembleState_BlastRadiusComputed(t *testing.T) {
 		"src/main.ts":  `import { helper } from './utils';`,
 		"src/utils.ts": `export const helper = () => {};`,
 	}
-	state := AssembleState(buildings, model.RepoInfo{}, mapReader(files), layout.Config{}, deps.Config{})
+	state := AssembleState(buildings, model.RepoInfo{}, mapReader(files), layout.Config{}, deps.Config{}, nil)
 
 	var main, utils model.Building
 	for _, b := range state.Buildings {
@@ -165,7 +165,7 @@ func TestAssembleState_Stats(t *testing.T) {
 		{ID: "c.go", Language: "go", LOC: 50, Coverage: -1}, // unknown
 	}
 
-	state := AssembleState(buildings, model.RepoInfo{}, noopReader, layout.Config{}, deps.Config{})
+	state := AssembleState(buildings, model.RepoInfo{}, noopReader, layout.Config{}, deps.Config{}, nil)
 
 	if state.Stats.FileCount != 3 {
 		t.Errorf("FileCount = %d, want 3", state.Stats.FileCount)
@@ -317,6 +317,64 @@ func TestMergeBuildings_PreservesBlastRadius(t *testing.T) {
 	}
 	if found.LOC != 120 {
 		t.Errorf("LOC = %d, want 120 (taken from update)", found.LOC)
+	}
+}
+
+func TestMergeBuildings_PreservesChurn(t *testing.T) {
+	current := model.CityState{
+		Buildings: []model.Building{
+			{ID: "a.ts", LOC: 100, Churn: 0.75, GX: 1, GY: 2, GW: 5, GH: 4, GZ: 10},
+		},
+	}
+	updates := []model.Building{{ID: "a.ts", LOC: 120, Language: "ts"}}
+	next := MergeBuildings(current, updates)
+
+	var found model.Building
+	for _, b := range next.Buildings {
+		if b.ID == "a.ts" {
+			found = b
+			break
+		}
+	}
+	if found.ID == "" {
+		t.Fatalf("a.ts missing from merged state")
+	}
+	if found.Churn != 0.75 {
+		t.Errorf("Churn = %f, want 0.75 (preserved from existing)", found.Churn)
+	}
+}
+
+func TestAssembleState_ChurnPopulated(t *testing.T) {
+	buildings := []model.Building{
+		{ID: "hot.go", Language: "go", LOC: 100},
+		{ID: "cold.go", Language: "go", LOC: 50},
+	}
+	churn := map[string]float64{
+		"hot.go":  0.9,
+		"cold.go": 0.1,
+	}
+	state := AssembleState(buildings, model.RepoInfo{}, noopReader, layout.Config{}, deps.Config{}, churn)
+
+	byID := make(map[string]model.Building, len(state.Buildings))
+	for _, b := range state.Buildings {
+		byID[b.ID] = b
+	}
+	if byID["hot.go"].Churn != 0.9 {
+		t.Errorf("hot.go Churn = %f, want 0.9", byID["hot.go"].Churn)
+	}
+	if byID["cold.go"].Churn != 0.1 {
+		t.Errorf("cold.go Churn = %f, want 0.1", byID["cold.go"].Churn)
+	}
+}
+
+func TestAssembleState_ChurnNil(t *testing.T) {
+	buildings := []model.Building{
+		{ID: "a.go", Language: "go", LOC: 100},
+	}
+	state := AssembleState(buildings, model.RepoInfo{}, noopReader, layout.Config{}, deps.Config{}, nil)
+
+	if state.Buildings[0].Churn != 0 {
+		t.Errorf("Churn = %f, want 0 (nil churn map)", state.Buildings[0].Churn)
 	}
 }
 

@@ -13,3 +13,11 @@
 
 # Vite build output
 /web/dist
+
+# Screenshots shared with Claude Code
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.heic

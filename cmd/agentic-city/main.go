@@ -302,6 +302,7 @@ func makeDemoBuildings(rng *rand.Rand, districts []model.District) []model.Build
 			GW:         w,
 			GH:         h,
 			GZ:         z,
+			Churn:      rng.Float64(),
 		})
 	}
 

@@ -137,3 +137,15 @@ export function langColor(lang: string): string {
     default: return sol.base0;
   }
 }
+
+/**
+ * Map normalized churn value [0, 1] to a 5-stop cool→hot color ramp.
+ * 0.0 = cyan (cold/settled), 1.0 = red (hot/active).
+ */
+export function churnColor(churn: number): string {
+  if (churn <= 0) return sol.cyan;
+  if (churn <= 0.25) return sol.blue;
+  if (churn <= 0.5) return sol.yellow;
+  if (churn <= 0.75) return sol.orange;
+  return sol.red;
+}

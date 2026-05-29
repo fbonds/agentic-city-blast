@@ -1,6 +1,6 @@
 # Encoding Redesign — `agentic-city-blast`
 
-**Status:** In progress. Phases 1, 1.5, and 2a are implemented and committed.
+**Status:** Core redesign complete. All phases (1, 1.5, 2a, 2b, 3) are implemented.
 **Fork of:** [`mrf/agentic-city`](https://github.com/mrf/agentic-city) (MIT, © 2026 Mark Ferree).
 **Purpose of this doc:** Record the encoding change that defines this fork, the
 reasoning behind it, exactly which code it touches, and the decisions/tradeoffs
@@ -28,8 +28,8 @@ are orchestrating agents. The decision of this fork:
   visual volume represents structural risk. `w = clamp(4 + √BR, 4, 12)`,
   `h = 0.8w`. *(Implemented — see §5 for the decision rationale.)*
 - **Color encodes churn** — how frequently the file has changed recently (from
-  git history). This is a volatile, recency-weighted "where is the action"
-  signal. *(Not yet implemented.)*
+  git history). `git log --since=90days`, log-normalized to [0,1], mapped to
+  a 5-stop solarized ramp: cyan → blue → yellow → orange → red. *(Implemented.)*
 - **District sizing uses a squarified treemap** weighted by total footprint
   area per district. This replaced the uniform grid so cross-district visual
   comparison is meaningful. *(Implemented.)*
@@ -151,25 +151,33 @@ produces. No analyzer rewrite is required for a first version.
   when a building is selected.
 - Four test files updated with `blastRadius: 0` in mock buildings.
 
-**Frontend (Phase 3 — churn color) — TODO:**
+**Frontend (Phase 3 — churn color) — DONE:**
 
-- `web/src/canvas/BuildingRenderer.ts`: side-face tint currently comes from
-  `LANG_COLORS[b.language]` (line ~218). Repurpose to a churn-derived color
-  ramp. Note existing precedent in the same file: coverage already maps to a
-  green/yellow/red window-dot color, and status maps to a stroke color — so
-  value-based coloring infrastructure and palette entries already exist
-  (`web/src/theme/colors.ts`, Solarized-dark).
-- Legend / HUD (`web/src/hud/`): update to document the churn color mapping.
+- `web/src/store/cityStore.ts`: `Building` interface now includes
+  `churn: number`.
+- `web/src/hud/palette.ts`: `churnColor(churn: number): string` — 5-stop
+  ramp using solarized accents (cyan → blue → yellow → orange → red).
+- `web/src/canvas/BuildingRenderer.ts`: `LANG_COLORS` removed entirely.
+  Building tint now uses `churnColor(b.churn)` instead of language-based
+  color. Footprint and roof alpha unchanged.
+- `web/src/hud/RightRail.tsx`: `BuildingPanel` shows churn percentage
+  (or "cold" for zero) with color-coded text.
+- Four test files updated with `churn: 0` in mock buildings.
 
-**New data pipeline (Phase 2 — churn):**
+**New data pipeline (Phase 3 — churn) — DONE:**
 
-- There is currently **no churn or git-history data anywhere** in the repo.
-  `internal/repo/metrics.go` covers coverage and test status only; the only git
-  usage is `GatherRepoInfo` reading branch/commit. Churn requires net-new
-  collection: shell out to `git log` per file (or a single `git log --name-only`
-  pass), count recent commits within a window, cache the result, and surface it
-  on `Building` (e.g. `Churn int`). This is the reason churn is Phase 2 — it is
-  the expensive half.
+- `internal/repo/churn.go`: `ComputeChurn` runs a single
+  `git log --since=90days --name-only --format="" --diff-filter=AMRC` pass
+  and counts commits per file. `NormalizeChurn` applies log normalization
+  (`log(1+count)/log(1+max)`) to produce [0,1] values.
+- `internal/repo/churn_test.go`: 13 table-driven tests for parsing,
+  normalization, and config defaults.
+- `internal/city/builder.go`: `BuildState` calls `ComputeChurn` +
+  `NormalizeChurn` (best-effort; errors yield zero churn). `AssembleState`
+  applies the churn map to buildings. `MergeBuildings` preserves churn on
+  incremental updates.
+- Churn refreshes on full rescans only (structural file changes), not on
+  content-only edits.
 
 ### Explicitly NOT touched
 
@@ -207,9 +215,10 @@ dense districts looked smaller than low-BR files in sparse ones.
 Frontend `Building` type now includes `blastRadius`. RightRail detail panel
 shows blast radius when a building is selected.
 
-**Phase 3 — Churn as color. TODO.**
-Requires a new git-history data pipeline plus frontend renderer and legend
-changes. Independent of preceding phases.
+**Phase 3 — Churn as color. DONE.**
+`git log --since=90days` counts commits per file, log-normalized to [0,1].
+5-stop solarized color ramp replaces language-based building tint. Churn
+shown in RightRail building detail panel.
 
 Each phase is independently shippable and independently useful.
 
@@ -266,12 +275,17 @@ function (already in `internal/layout/treemap.go`, previously unused for
 districts) now sizes districts proportionally to their total natural footprint
 area. This preserves cross-district visual comparison.
 
-### Churn noise (OPEN — Phase 2)
+### Churn noise (DECIDED — partially addressed)
 
-Git churn naively counts generated files, lockfiles, formatting passes, and mass
-renames as "hot." Phase 2 must filter these (e.g. respect `.gitignore`-style
-exclusions, ignore lockfiles/generated paths) or the hottest colors will be
-meaningless.
+**Decision:** `--diff-filter=AMRC` excludes deleted files. The churn window
+(90 days, configurable via `ChurnConfig.SinceDays`) limits the blast from
+old history. Log normalization dampens outliers.
+
+**Known limitation:** Agent-driven commits dominate the churn signal in an
+agent-heavy workflow, partly re-encoding the live UFO layer. Filtering would
+require correlating agentwatch session windows with `git log` authorship —
+flagged but not addressed in Phase 3. Lockfile/generated-file exclusions
+are also not yet implemented.
 
 ### Confidence weighting (DECIDED)
 

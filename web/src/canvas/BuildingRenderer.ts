@@ -1,9 +1,9 @@
 /**
- * BuildingRenderer — isometric box rendering with language-tinted faces,
+ * BuildingRenderer — isometric box rendering with churn-tinted faces,
  * hidden back edges, floating labels, window dots, and edit rings.
  *
  * Draw order: footprint -> hidden back edges -> base outline ->
- *             side faces (language-tinted) -> roof -> window dots ->
+ *             side faces (churn-tinted) -> roof -> window dots ->
  *             edit rings -> label
  *
  * Buildings are sorted back-to-front by (gx + gy) for correct occlusion.
@@ -14,6 +14,7 @@ import type { Building, DistrictBuilding } from '../store/cityStore';
 import { sol as SD } from '../theme/colors';
 import { FONT_FAMILY, FONT_SIZE } from '../theme/typography';
 import { findPassiveOccluders } from './OcclusionDetector';
+import { churnColor } from '../hud/palette';
 
 /**
  * Opacity applied to buildings that visually occlude the cursor/selected building.
@@ -74,19 +75,6 @@ function getOffscreenCtx(width: number, height: number): CanvasRenderingContext2
   return ctx;
 }
 
-const LANG_COLORS: Record<string, string> = {
-  ts: SD.blue,
-  tsx: SD.violet,
-  js: SD.yellow,
-  jsx: SD.yellow,
-  go: SD.cyan,
-  py: SD.green,
-  rs: SD.orange,
-  sql: SD.cyan,
-  css: SD.magenta,
-  md: SD.greenDim,
-  spec: SD.yellow,
-};
 
 /** Stable hash of a string to a 32-bit unsigned int for seeded PRNG. */
 function hashId(id: string): number {
@@ -215,7 +203,7 @@ function drawBuilding(
   showLabels: boolean,
   time: number,
 ): void {
-  const tint = LANG_COLORS[b.language] ?? SD.base00;
+  const tint = churnColor(b.churn);
   const [tR, tG, tB] = hexToRgb(tint);
 
   // Ground-plane corners

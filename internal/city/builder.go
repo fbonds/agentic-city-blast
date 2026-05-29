@@ -92,6 +92,7 @@ func AssembleState(
 	readContent func(id string) ([]byte, error),
 	layoutCfg layout.Config,
 	depsCfg deps.Config,
+	churn map[string]float64,
 ) model.CityState {
 	// Build the import graph before layout so blast radius can be populated
 	// on each building and consumed by the packer as it assigns heights.
@@ -106,6 +107,9 @@ func AssembleState(
 	enriched := make([]model.Building, len(buildings))
 	for i, b := range buildings {
 		b.BlastRadius = blastRadius[b.ID]
+		if churn != nil {
+			b.Churn = churn[b.ID]
+		}
 		enriched[i] = b
 	}
 
@@ -131,8 +135,12 @@ func BuildState(repoPath string, cfg BuildConfig) (model.CityState, error) {
 
 	repoInfo, _ := GatherRepoInfo(repoPath) // best-effort; zero value is fine
 
+	// Compute churn (best-effort; zero churn on error).
+	raw, _ := repo.ComputeChurn(repoPath, repo.ChurnConfig{})
+	churn := repo.NormalizeChurn(raw)
+
 	readContent := deps.DirReader(repoPath)
-	return AssembleState(buildings, repoInfo, readContent, cfg.LayoutCfg, cfg.DepsCfg), nil
+	return AssembleState(buildings, repoInfo, readContent, cfg.LayoutCfg, cfg.DepsCfg, churn), nil
 }
 
 // MergeBuildings applies incremental building updates to the current state.
@@ -171,6 +179,7 @@ func MergeBuildings(current model.CityState, updates []model.Building) model.Cit
 			// the renderer would briefly disagree with itself — GZ from the
 			// old BR, footprint from the new BR=0).
 			u.BlastRadius = existing.BlastRadius
+			u.Churn = existing.Churn
 		}
 		// Floor GZ at the minimum visible height. Applies to brand-new
 		// buildings (no prior layout) and to any update path that did not

@@ -23,6 +23,7 @@ function mkBuilding(
     editing: false,
     exports: 0,
     blastRadius: 0,
+    churn: 0,
   };
 }
 

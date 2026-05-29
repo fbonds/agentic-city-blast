@@ -15,7 +15,7 @@ The redesign:
 - **Height** encodes **blast radius** — how many files transitively depend on this one.
 - **Footprint** encodes **blast radius** — coupled with height so a building's visual volume represents structural risk.
 - **District sizing** uses a **squarified treemap** weighted by content, so cross-district comparison is meaningful.
-- **Color** will encode **churn** — how often the file has changed recently (not yet implemented).
+- **Color** encodes **churn** — how often the file has changed in the last 90 days (cyan = cold, red = hot).
 
 The full reasoning, code it touches, and open decisions are in [encoding-redesign.md](encoding-redesign.md).
 
@@ -29,11 +29,12 @@ The full reasoning, code it touches, and open decisions are in [encoding-redesig
 | 1.5c | Frontend null guard | **Done** | `districtThresholds` null crash fixed in `cityStore.ts`. |
 | 2a | Treemap district sizing | **Done** | Districts sized by total footprint area via `squarify()`. Fixes the cross-district compression problem where high-BR files in dense districts looked smaller than low-BR files in sparse ones. |
 | 2b | HUD legend update | **Done** | `Building` interface now includes `blastRadius`. RightRail shows blast radius when a building is selected. |
-| 3 | Color → churn pipeline | **Todo** | Git history analysis, recency-weighted churn score, color mapping. |
+| 3 | Color → churn pipeline | **Done** | `git log --since=90days` counts commits per file. Log-normalized to [0,1]. 5-stop color ramp: cyan → blue → yellow → orange → red. Replaces language-based building tint. |
 
 ## Known issues
 
 - **Agent overlay line cap:** Backend logs `parse failed: line exceeds size cap` warnings from agentwatch hitting an upstream JSONL size limit. Agent (UFO) tracking still works but some session state updates are dropped.
+- **Agent-driven churn noise:** Agents are much of the churn in an agent-driven workflow, so the churn signal partly re-encodes the live UFO layer. Filtering agent commits would require correlating agentwatch sessions with git authorship — flagged as a known limitation, not yet addressed.
 
 ## Honest caveats
 

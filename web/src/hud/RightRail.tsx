@@ -4,7 +4,7 @@ import { useCoverageHistoryStore, computeAggregateDelta, computeFileDelta } from
 import { DeltaIndicator } from './DeltaIndicator';
 import { useUiStore } from '../store/uiStore';
 import type { ActivityEvent, Building, Agent, DistrictBuilding } from '../store/cityStore';
-import { sol, langColor, coverageColor, ciColor, tierColor, severityColor, hudBase, TOP_BAR_H, BOTTOM_STRIP_H } from './palette';
+import { sol, langColor, coverageColor, ciColor, tierColor, severityColor, churnColor, hudBase, TOP_BAR_H, BOTTOM_STRIP_H } from './palette';
 
 const MAX_THRESHOLD_ALERTS = 10;
 
@@ -134,6 +134,12 @@ function BuildingPanel({ building }: { building: Building }): JSX.Element {
       <div style={S.row}>
         <span style={S.rowLabel}>blast radius</span>
         <span style={S.rowValue}>{building.blastRadius}</span>
+      </div>
+      <div style={S.row}>
+        <span style={S.rowLabel}>churn</span>
+        <span style={{ ...S.rowValue, color: churnColor(building.churn) }}>
+          {building.churn > 0 ? `${Math.round(building.churn * 100)}%` : 'cold'}
+        </span>
       </div>
       <div style={S.row}>
         <span style={S.rowLabel}>LOC</span>

@@ -22,6 +22,7 @@ export interface Building {
   editing: boolean;
   exports: number;
   blastRadius: number;
+  churn: number;
   gx: number;
   gy: number;
   gw: number;

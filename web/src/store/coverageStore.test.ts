@@ -22,6 +22,7 @@ const makeBuilding = (overrides: Partial<Building>): Building => ({
   editing: false,
   exports: 3,
   blastRadius: 0,
+  churn: 0,
   gx: 0,
   gy: 0,
   gw: 2,
