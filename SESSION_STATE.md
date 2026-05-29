@@ -1,4 +1,4 @@
-# Session handoff — Phase 2a complete
+# Session handoff — Phase 2b complete
 
 **Last touched:** 2026-05-29. Terminal Claude Code session in this directory.
 
@@ -32,6 +32,12 @@ Everything below is committed on `main`. Working tree is clean.
   `internal/layout/layout_test.go` (proportional area, no padding, count
   matches content).
 
+- **Phase 2b — HUD legend update:** `web/src/store/cityStore.ts` `Building`
+  interface now includes `blastRadius: number`. `web/src/hud/RightRail.tsx`
+  shows blast radius in the building detail panel. Four test files updated
+  with `blastRadius: 0` in mock buildings. TypeScript clean, ESLint clean,
+  all 116 frontend tests pass.
+
 - **README.md:** Updated to WIP status with progress table and known issues.
 
 - **encoding-redesign.md:** Updated — status, decisions resolved (height
@@ -59,8 +65,7 @@ Browser: <http://localhost:5173>.
 
 | Priority | Item | Notes |
 |----------|------|-------|
-| 1 | HUD legend update | Legend reads "height = LOC" — now a lie. Quick frontend fix. |
-| 2 | Churn pipeline (Phase 3) | Git history analysis, recency-weighted score, color mapping. Net-new data pipeline. |
+| 1 | Churn pipeline (Phase 3) | Git history analysis, recency-weighted score, color mapping. Net-new data pipeline. |
 | — | `encoding-redesign.md` §6 | Companion doc tasks (DESIGN.md pointer). Low priority. |
 
 ## Known issues
@@ -79,3 +84,4 @@ Reload <http://localhost:5173> after the backend is up.
 - `internal/model/coverage_history.go` should still be the tallest building.
 - `web/src/store/cityStore.ts` should now be visually comparable across
   districts (no longer crushed by dense-district packing).
+- Selecting a building in the RightRail should show **blast radius** above LOC.

@@ -143,7 +143,15 @@ produces. No analyzer rewrite is required for a first version.
 - `internal/layout/layout_test.go`: grid tests replaced with treemap invariant
   tests (proportional area, no padding, count matches content).
 
-**Frontend (Phase 2 — churn color):**
+**Frontend (Phase 2b — HUD legend) — DONE:**
+
+- `web/src/store/cityStore.ts`: `Building` interface now includes
+  `blastRadius: number`, matching the backend's JSON field.
+- `web/src/hud/RightRail.tsx`: `BuildingPanel` shows "blast radius" above LOC
+  when a building is selected.
+- Four test files updated with `blastRadius: 0` in mock buildings.
+
+**Frontend (Phase 3 — churn color) — TODO:**
 
 - `web/src/canvas/BuildingRenderer.ts`: side-face tint currently comes from
   `LANG_COLORS[b.language]` (line ~218). Repurpose to a churn-derived color
@@ -151,8 +159,7 @@ produces. No analyzer rewrite is required for a first version.
   green/yellow/red window-dot color, and status maps to a stroke color — so
   value-based coloring infrastructure and palette entries already exist
   (`web/src/theme/colors.ts`, Solarized-dark).
-- Legend / HUD (`web/src/hud/`): whatever currently documents the
-  language-color and height-LOC mappings must be updated to the new meanings.
+- Legend / HUD (`web/src/hud/`): update to document the churn color mapping.
 
 **New data pipeline (Phase 2 — churn):**
 
@@ -196,8 +203,9 @@ Uniform grid replaced with `squarify()` weighted by total footprint area per
 district. Fixes the cross-district compression problem where high-BR files in
 dense districts looked smaller than low-BR files in sparse ones.
 
-**Phase 2b — HUD legend update. TODO.**
-Legend still reads "height = LOC" — now incorrect.
+**Phase 2b — HUD legend update. DONE.**
+Frontend `Building` type now includes `blastRadius`. RightRail detail panel
+shows blast radius when a building is selected.
 
 **Phase 3 — Churn as color. TODO.**
 Requires a new git-history data pipeline plus frontend renderer and legend

@@ -28,13 +28,12 @@ The full reasoning, code it touches, and open decisions are in [encoding-redesig
 | 1.5b | `MergeBuildings` BR preservation | **Done** | Bug fix: incremental edits no longer zero out blast radius on the edited file. |
 | 1.5c | Frontend null guard | **Done** | `districtThresholds` null crash fixed in `cityStore.ts`. |
 | 2a | Treemap district sizing | **Done** | Districts sized by total footprint area via `squarify()`. Fixes the cross-district compression problem where high-BR files in dense districts looked smaller than low-BR files in sparse ones. |
-| 2b | HUD legend update | **Todo** | Legend still reads "height = LOC" — now incorrect. |
+| 2b | HUD legend update | **Done** | `Building` interface now includes `blastRadius`. RightRail shows blast radius when a building is selected. |
 | 3 | Color → churn pipeline | **Todo** | Git history analysis, recency-weighted churn score, color mapping. |
 
 ## Known issues
 
 - **Agent overlay line cap:** Backend logs `parse failed: line exceeds size cap` warnings from agentwatch hitting an upstream JSONL size limit. Agent (UFO) tracking still works but some session state updates are dropped.
-- **`encoding-redesign.md` §5** still lists footprint as `OPEN` — should be updated to reflect the Phase 1.5 decision (footprint coupled to BR).
 
 ## Honest caveats
 

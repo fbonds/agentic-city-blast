@@ -22,6 +22,7 @@ function mkBuilding(
     status: 'ok',
     editing: false,
     exports: 0,
+    blastRadius: 0,
   };
 }
 

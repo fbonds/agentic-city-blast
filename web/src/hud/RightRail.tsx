@@ -132,6 +132,10 @@ function BuildingPanel({ building }: { building: Building }): JSX.Element {
         <span style={{ ...S.rowValue, color: langColor(building.language) }}>{building.language}</span>
       </div>
       <div style={S.row}>
+        <span style={S.rowLabel}>blast radius</span>
+        <span style={S.rowValue}>{building.blastRadius}</span>
+      </div>
+      <div style={S.row}>
         <span style={S.rowLabel}>LOC</span>
         <span style={S.rowValue}>{building.loc.toLocaleString()}</span>
       </div>
