@@ -164,6 +164,13 @@ func MergeBuildings(current model.CityState, updates []model.Building) model.Cit
 			u.GW = existing.GW
 			u.GH = existing.GH
 			u.GZ = existing.GZ
+			// Preserve blast radius for the same reason GZ is preserved:
+			// the incremental path has no access to the dep graph, so the
+			// last-known good value stays until the next full rescan. Without
+			// this, an edit to file X would zero out X's BlastRadius (and
+			// the renderer would briefly disagree with itself — GZ from the
+			// old BR, footprint from the new BR=0).
+			u.BlastRadius = existing.BlastRadius
 		}
 		// Floor GZ at the minimum visible height. Applies to brand-new
 		// buildings (no prior layout) and to any update path that did not

@@ -40,7 +40,7 @@ func packDistrict(buildings []model.Building, bx, by, bw, bh float64) []model.Bu
 	shelfH := 0.0
 
 	for i := range out {
-		fw, fh := footprint(out[i].LOC)
+		fw, fh := footprint(out[i].BlastRadius)
 		fw *= scale
 		fh *= scale
 
@@ -98,7 +98,7 @@ func measurePackHeight(buildings []model.Building, bw, scale float64) float64 {
 	curY := gutterSize
 	shelfH := 0.0
 	for _, b := range buildings {
-		fw, fh := footprint(b.LOC)
+		fw, fh := footprint(b.BlastRadius)
 		fw *= scale
 		fh *= scale
 		if curX+fw+gutterSize > bw && curX > gutterSize {
@@ -114,17 +114,31 @@ func measurePackHeight(buildings []model.Building, bw, scale float64) float64 {
 	return curY + shelfH + gutterSize
 }
 
-// footprint returns the (width, depth) for a building with the given LOC.
+// footprint returns the (width, depth) for a building with the given blast
+// radius.
 //
-//	w = clamp(√(LOC/20), 4, 12)
+//	w = clamp(4 + √BR, 4, 12)
 //	h = w × 0.8   (footprint depth)
 //
-// Height (GZ) is derived from blast radius, not LOC; see heightFromBlastRadius.
-// Keeping a faint LOC read on the footprint is the working default — file size
-// is the cheapest signal and "how much code is here" is mild useful context,
-// just not worth the dominant visual channel.
-func footprint(loc int) (float64, float64) {
-	w := clamp(math.Sqrt(float64(loc)/20.0), 4.0, 12.0)
+// Both width and height (GZ) now encode blast radius. This is a deliberate
+// reversal of the design doc's §5 working default ("footprint retains a faint
+// file-size read"). Empirically the file-size read was not faint: in densely
+// packed districts the packer scales footprints down, which combined with
+// LOC-driven width made high-LOC / low-BR Go files visually dominate over
+// low-LOC / high-BR TS stores — the inverse of what the encoding is for.
+// Coupling footprint to blast radius makes structural risk own visual volume:
+// a building's "size" matches what its name says — how much breaks if you
+// touch it.
+//
+// Square root pairs with the log₂ height function (heightFromBlastRadius):
+// height grows fast at the low end and saturates near the top of the long
+// tail, while width grows more gradually, so combined volume contrast is
+// dramatic for genuine skyscrapers without making BR=1 buildings absurd.
+func footprint(blastRadius int) (float64, float64) {
+	if blastRadius < 0 {
+		blastRadius = 0
+	}
+	w := clamp(4.0+math.Sqrt(float64(blastRadius)), 4.0, 12.0)
 	h := w * 0.8
 	return w, h
 }

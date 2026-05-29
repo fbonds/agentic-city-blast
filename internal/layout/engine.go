@@ -79,7 +79,7 @@ func Layout(buildings []model.Building, cfg Config) Result {
 	totalFootprint := 0.0
 	for _, de := range entries {
 		for _, b := range de.buildings {
-			fw, fh := footprint(b.LOC)
+			fw, fh := footprint(b.BlastRadius)
 			totalFootprint += fw * fh
 		}
 	}

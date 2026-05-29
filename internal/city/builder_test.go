@@ -287,6 +287,39 @@ func TestMergeBuildings_NewFileFloorGZ(t *testing.T) {
 	}
 }
 
+// TestMergeBuildings_PreservesBlastRadius verifies that an incremental update
+// (which has no access to the dep graph) does not zero out the blast radius
+// of an existing building. Without preservation, a single-file edit causes a
+// transient disagreement between GZ (still from the old BR) and footprint
+// (newly recomputed from BR=0).
+func TestMergeBuildings_PreservesBlastRadius(t *testing.T) {
+	current := model.CityState{
+		Buildings: []model.Building{
+			{ID: "a.ts", LOC: 100, BlastRadius: 12, GX: 1, GY: 2, GW: 5, GH: 4, GZ: 10},
+		},
+	}
+	// Watcher delivers an update with no BlastRadius (default 0).
+	updates := []model.Building{{ID: "a.ts", LOC: 120, Language: "ts"}}
+	next := MergeBuildings(current, updates)
+
+	var found model.Building
+	for _, b := range next.Buildings {
+		if b.ID == "a.ts" {
+			found = b
+			break
+		}
+	}
+	if found.ID == "" {
+		t.Fatalf("a.ts missing from merged state")
+	}
+	if found.BlastRadius != 12 {
+		t.Errorf("BlastRadius = %d, want 12 (preserved from existing)", found.BlastRadius)
+	}
+	if found.LOC != 120 {
+		t.Errorf("LOC = %d, want 120 (taken from update)", found.LOC)
+	}
+}
+
 func TestMergeBuildings_PreservesTimestamp(t *testing.T) {
 	current := model.CityState{
 		Buildings: []model.Building{{ID: "a.ts", LOC: 10}},

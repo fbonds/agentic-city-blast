@@ -243,7 +243,7 @@ export function selectDistrictBuildings(
     }
 
     const districtThreshold =
-      settings.districtThresholds[d.id] ?? settings.coverageThreshold;
+      settings.districtThresholds?.[d.id] ?? settings.coverageThreshold;
     const coverageWarn = coverage >= 0 && coverage < districtThreshold;
 
     return {

@@ -179,20 +179,26 @@ func TestSquarify_ZeroDimensionCanvas(t *testing.T) {
 
 func TestFootprint(t *testing.T) {
 	cases := []struct {
-		name  string
-		loc   int
-		wantW float64
+		name        string
+		blastRadius int
+		wantW       float64
 	}{
-		// LOC=0: √(0/20)=0 → clamped to w=4
-		{"zero LOC clamps to min", 0, 4.0},
-		// LOC=100000: √(100000/20)=√5000≈70.7 → clamped to w=12
-		{"large LOC clamps to max", 100000, 12.0},
-		// LOC=500: √(500/20)=√25=5 → w=5
-		{"middle range unclamped", 500, 5.0},
+		// BR=0: 4 + √0 = 4 (the floor — most files in any repo).
+		{"zero BR is the floor", 0, 4.0},
+		// BR=4: 4 + √4 = 6.
+		{"four dependents", 4, 6.0},
+		// BR=16: 4 + √16 = 8.
+		{"sixteen dependents", 16, 8.0},
+		// BR=64: 4 + √64 = 12, hits ceiling exactly.
+		{"sixty-four dependents hits ceiling", 64, 12.0},
+		// Long tail: any BR ≥ 64 saturates at the visual cap.
+		{"long tail clamps to max", 10_000, 12.0},
+		// Defensive: negative input must not panic.
+		{"negative input safely treated as zero", -5, 4.0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			w, h := footprint(tc.loc)
+			w, h := footprint(tc.blastRadius)
 			if math.Abs(w-tc.wantW) > eps {
 				t.Errorf("w = %.6f, want %.6f", w, tc.wantW)
 			}
