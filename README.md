@@ -2,7 +2,7 @@
 
 A fork of [mrf/agentic-city](https://github.com/mrf/agentic-city) by Mark Ferree.
 
-**This is a thought experiment, not a project.** Nothing in this fork is implemented yet — the code is bit-for-bit identical to upstream. The idea lives in [encoding-redesign.md](encoding-redesign.md); the implementation may or may not follow.
+**Status: Work in progress.** The encoding redesign described below is actively being implemented. See the progress table for current state.
 
 ## Why this exists
 
@@ -10,26 +10,53 @@ The upstream project is remarkable. It turns a codebase into a living isometric 
 
 I came across it through a coworker. While chatting with Claude Code about the premise, one thing kept circling: the dominant visual channel — building height — is driven by file size. File size is the cheapest signal to compute, but it may not be the most useful one for the use case the city is pitched at (orchestrating AI agents). And so: *this is awesome — I wonder what it would be like if the metric were something else though.*
 
-The sketch:
+The redesign:
 
-- **Height** would encode **blast radius** — how many files transitively depend on this one.
-- **Color** would encode **churn** — how often the file has changed recently.
+- **Height** encodes **blast radius** — how many files transitively depend on this one.
+- **Footprint** encodes **blast radius** — coupled with height so a building's visual volume represents structural risk.
+- **District sizing** uses a **squarified treemap** weighted by content, so cross-district comparison is meaningful.
+- **Color** will encode **churn** — how often the file has changed recently (not yet implemented).
 
-That's it. The reasoning, the code it would touch, and the open decisions are all in [encoding-redesign.md](encoding-redesign.md).
+The full reasoning, code it touches, and open decisions are in [encoding-redesign.md](encoding-redesign.md).
+
+## Progress
+
+| Phase | What | Status | Notes |
+|-------|------|--------|-------|
+| 1 | Blast radius → building height | **Done** | `blastradius.go` computes transitive dependents via reverse BFS. `heightFromBlastRadius` uses `3 + 3·log₂(1+BR)`, clamped to [3, 30]. |
+| 1.5a | Blast radius → building footprint | **Done** | `footprint()` switched from LOC to BR. `w = clamp(4 + √BR, 4, 12)`, `h = 0.8w`. |
+| 1.5b | `MergeBuildings` BR preservation | **Done** | Bug fix: incremental edits no longer zero out blast radius on the edited file. |
+| 1.5c | Frontend null guard | **Done** | `districtThresholds` null crash fixed in `cityStore.ts`. |
+| 2a | Treemap district sizing | **Done** | Districts sized by total footprint area via `squarify()`. Fixes the cross-district compression problem where high-BR files in dense districts looked smaller than low-BR files in sparse ones. |
+| 2b | HUD legend update | **Todo** | Legend still reads "height = LOC" — now incorrect. |
+| 3 | Color → churn pipeline | **Todo** | Git history analysis, recency-weighted churn score, color mapping. |
+
+## Known issues
+
+- **Agent overlay line cap:** Backend logs `parse failed: line exceeds size cap` warnings from agentwatch hitting an upstream JSONL size limit. Agent (UFO) tracking still works but some session state updates are dropped.
+- **`encoding-redesign.md` §5** still lists footprint as `OPEN` — should be updated to reflect the Phase 1.5 decision (footprint coupled to BR).
 
 ## Honest caveats
 
-I genuinely do not know if this will work, or if it will be of value to anyone beyond satisfying my own curiosity. The dependency graph this would build on is import-extraction-based, and upstream itself flags it as approximate, so blast-radius numbers would inherit that uncertainty. It is entirely possible the result reads worse than the original.
+I genuinely do not know if this will work, or if it will be of value to anyone beyond satisfying my own curiosity. The dependency graph this builds on is import-extraction-based, and upstream itself flags it as approximate, so blast-radius numbers inherit that uncertainty. It is entirely possible the result reads worse than the original.
 
 This is also not a critique of upstream, which I think is excellent. The reason it lives in a fork rather than a PR is that the encoding swap conflicts with upstream's stated thesis ("file sizes determine building heights"), and asking Mark to take that on would not be respectful of his vision. Any dependency-analyzer improvements that fall out of this are vision-neutral and I would be happy to offer them back.
 
 ## Running it
 
-Unchanged from upstream. See [DESIGN.md](DESIGN.md) for architecture and keyboard bindings:
+See [DESIGN.md](DESIGN.md) for full architecture and keyboard bindings:
 
 ```bash
-make dev          # frontend dev server (http://localhost:5173)
-make run          # Go backend (http://localhost:8080)
+# Development (two terminals)
+go run ./cmd/agentic-city --repo=/path/to/repo   # backend on :8080
+cd web && npm run dev                            # Vite dev server on :5173 (proxies /api /ws)
+
+# Or via Makefile
+make run            # build everything, start server
+make dev            # frontend dev server only
+
+# Demo mode (synthetic city, no real repo needed)
+go run ./cmd/agentic-city --demo
 ```
 
 ## License

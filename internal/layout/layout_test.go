@@ -513,42 +513,59 @@ func TestLayout_BuildingsWithinDistrictBounds(t *testing.T) {
 	}
 }
 
-// TestLayout_GridEqualCells verifies that all real (non-placeholder) districts
-// have the same GW and GH, forming a uniform grid.
-func TestLayout_GridEqualCells(t *testing.T) {
+// TestLayout_DistrictAreaProportionalToWeight verifies that a district with
+// higher total blast radius gets more canvas area than one with lower total BR.
+// This is the core invariant of the treemap-based district sizing: cross-district
+// visual comparison is meaningful because the treemap allocates area proportional
+// to content weight.
+func TestLayout_DistrictAreaProportionalToWeight(t *testing.T) {
+	buildings := []model.Building{
+		// District "heavy": one file with high BR.
+		{ID: "heavy/big.go", LOC: 100, BlastRadius: 50},
+		// District "light": one file with low BR.
+		{ID: "light/small.go", LOC: 100, BlastRadius: 1},
+	}
+	result := Layout(buildings, Config{DistrictDepth: 1})
+
+	distByID := make(map[string]model.District)
+	for _, d := range result.Districts {
+		distByID[d.ID] = d
+	}
+	heavy := distByID["heavy"]
+	light := distByID["light"]
+
+	heavyArea := heavy.GW * heavy.GH
+	lightArea := light.GW * light.GH
+
+	if heavyArea <= lightArea {
+		t.Errorf("heavy district area (%.3f) should be > light district area (%.3f)",
+			heavyArea, lightArea)
+	}
+}
+
+// TestLayout_NoPaddingDistricts verifies that the treemap layout produces no
+// placeholder __pad_ districts.
+func TestLayout_NoPaddingDistricts(t *testing.T) {
 	buildings := []model.Building{
 		{ID: "a/f.go", LOC: 100},
 		{ID: "b/f.go", LOC: 200},
 		{ID: "c/f.go", LOC: 50},
-		{ID: "d/f.go", LOC: 300},
-		{ID: "e/f.go", LOC: 150},
 	}
 	result := Layout(buildings, Config{DistrictDepth: 1})
 
-	real := make([]model.District, 0)
 	for _, d := range result.Districts {
-		if !strings.HasPrefix(d.ID, "__pad") {
-			real = append(real, d)
+		if strings.HasPrefix(d.ID, "__pad") {
+			t.Errorf("unexpected padding district %q; treemap should not produce placeholders", d.ID)
 		}
 	}
-	if len(real) < 2 {
-		t.Fatalf("expected at least 2 real districts, got %d", len(real))
-	}
-	wantW := real[0].GW
-	wantH := real[0].GH
-	for _, d := range real[1:] {
-		if math.Abs(d.GW-wantW) > eps {
-			t.Errorf("district %q GW=%.3f, want %.3f", d.ID, d.GW, wantW)
-		}
-		if math.Abs(d.GH-wantH) > eps {
-			t.Errorf("district %q GH=%.3f, want %.3f", d.ID, d.GH, wantH)
-		}
+	if len(result.Districts) != 3 {
+		t.Errorf("expected exactly 3 districts, got %d", len(result.Districts))
 	}
 }
 
-// TestLayout_GridPadsToRectangle verifies that the total district count (real +
-// placeholder) equals rows×cols, forming a complete rectangle.
-func TestLayout_GridPadsToRectangle(t *testing.T) {
+// TestLayout_DistrictCountMatchesContent verifies that the district count equals
+// the number of unique directory groups (no padding, no missing).
+func TestLayout_DistrictCountMatchesContent(t *testing.T) {
 	cases := []struct {
 		n int // number of real districts
 	}{
@@ -564,19 +581,8 @@ func TestLayout_GridPadsToRectangle(t *testing.T) {
 				}
 			}
 			result := Layout(buildings, Config{DistrictDepth: 1})
-			total := len(result.Districts)
-
-			// Find factors: total must equal rows*cols for integer rows, cols
-			// where cols = ceil(sqrt(n)) and rows = ceil(n/cols).
-			cols := int(math.Ceil(math.Sqrt(float64(tc.n))))
-			if cols == 0 {
-				cols = 1
-			}
-			rows := (tc.n + cols - 1) / cols
-			want := rows * cols
-
-			if total != want {
-				t.Errorf("n=%d: got %d total districts, want %d (%d×%d)", tc.n, total, want, rows, cols)
+			if len(result.Districts) != tc.n {
+				t.Errorf("n=%d: got %d districts, want %d", tc.n, len(result.Districts), tc.n)
 			}
 		})
 	}

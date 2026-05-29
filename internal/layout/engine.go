@@ -1,7 +1,6 @@
 package layout
 
 import (
-	"fmt"
 	"math"
 	"path"
 	"sort"
@@ -90,37 +89,32 @@ func Layout(buildings []model.Building, cfg Config) Result {
 		canvasSize = 50
 	}
 
-	// --- Grid layout for districts ---------------------------------------------
-	// Districts are arranged in a uniform rows×cols grid so the overall shape
-	// is always a clean rectangle. Empty cells are filled with placeholder
-	// districts so the grid has no gaps.
+	// --- Treemap layout for districts -------------------------------------------
+	// Districts are sized proportionally to their total natural footprint area
+	// (sum of fw*fh for each building). This ensures cross-district visual
+	// comparison is meaningful: a district with higher-BR buildings gets more
+	// canvas area, preventing dense districts from compressing their buildings
+	// into invisibility.
 
-	n := len(entries)
-	cols := int(math.Ceil(math.Sqrt(float64(n))))
-	if cols == 0 {
-		cols = 1
-	}
-	rows := (n + cols - 1) / cols
-	cellW := canvasSize / float64(cols)
-	cellH := canvasSize / float64(rows)
-
-	// Assign real districts to grid cells in row-major order.
-	rectByID := make(map[string]treemapRect, n)
+	nodes := make([]treemapNode, len(entries))
 	for i, de := range entries {
-		col := i % cols
-		row := i / cols
-		rectByID[de.id] = treemapRect{
-			id: de.id,
-			x:  float64(col) * cellW,
-			y:  float64(row) * cellH,
-			w:  cellW,
-			h:  cellH,
+		weight := 0.0
+		for _, b := range de.buildings {
+			fw, fh := footprint(b.BlastRadius)
+			weight += fw * fh
 		}
+		nodes[i] = treemapNode{id: de.id, weight: weight}
+	}
+
+	rects := squarify(nodes, 0, 0, canvasSize, canvasSize)
+	rectByID := make(map[string]treemapRect, len(rects))
+	for _, r := range rects {
+		rectByID[r.id] = r
 	}
 
 	// --- Pack buildings within each district ------------------------------------
 
-	outDistricts := make([]model.District, 0, rows*cols)
+	outDistricts := make([]model.District, 0, len(entries))
 	var outBuildings []model.Building
 
 	for _, de := range entries {
@@ -138,6 +132,17 @@ func Layout(buildings []model.Building, cfg Config) Result {
 
 		packed := packDistrict(de.buildings, r.x, r.y, r.w, r.h)
 
+		// Expand district height if packed buildings overflow vertically.
+		// The treemap allocates area proportionally, but gutter overhead and
+		// minimum footprint sizes can still cause the shelf packer to exceed
+		// the allocated height.
+		dh := r.h
+		for _, b := range packed {
+			if bottom := b.GY + b.GH - r.y; bottom > dh {
+				dh = bottom
+			}
+		}
+
 		outDistricts = append(outDistricts, model.District{
 			ID:       de.id,
 			Label:    label,
@@ -145,24 +150,10 @@ func Layout(buildings []model.Building, cfg Config) Result {
 			GX:       r.x,
 			GY:       r.y,
 			GW:       r.w,
-			GH:       r.h,
+			GH:       dh,
 		})
 
 		outBuildings = append(outBuildings, packed...)
-	}
-
-	// Pad remaining grid cells with empty placeholder districts.
-	for i := n; i < rows*cols; i++ {
-		col := i % cols
-		row := i / cols
-		outDistricts = append(outDistricts, model.District{
-			ID:    fmt.Sprintf("__pad_%d", i),
-			Label: "",
-			GX:    float64(col) * cellW,
-			GY:    float64(row) * cellH,
-			GW:    cellW,
-			GH:    cellH,
-		})
 	}
 
 	// Sort outputs deterministically by ID.
