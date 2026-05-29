@@ -1,6 +1,6 @@
 # Encoding Redesign — `agentic-city-blast`
 
-**Status:** Proposed. Nothing in this document has been implemented yet.
+**Status:** In progress. Phases 1, 1.5, and 2a are implemented and committed.
 **Fork of:** [`mrf/agentic-city`](https://github.com/mrf/agentic-city) (MIT, © 2026 Mark Ferree).
 **Purpose of this doc:** Record the encoding change that defines this fork, the
 reasoning behind it, exactly which code it touches, and the decisions/tradeoffs
@@ -23,18 +23,18 @@ are orchestrating agents. The decision of this fork:
 
 - **Height encodes blast radius** — the number of files that transitively
   depend on this file. "If an agent edits this, how much of the system is
-  downstream of it." This claims the dominant visual channel.
+  downstream of it." This claims the dominant visual channel. *(Implemented.)*
+- **Footprint encodes blast radius** — coupled with height so a building's
+  visual volume represents structural risk. `w = clamp(4 + √BR, 4, 12)`,
+  `h = 0.8w`. *(Implemented — see §5 for the decision rationale.)*
 - **Color encodes churn** — how frequently the file has changed recently (from
   git history). This is a volatile, recency-weighted "where is the action"
-  signal.
+  signal. *(Not yet implemented.)*
+- **District sizing uses a squarified treemap** weighted by total footprint
+  area per district. This replaced the uniform grid so cross-district visual
+  comparison is meaningful. *(Implemented.)*
 - **Position is unchanged.** Buildings remain anchored to their directory
-  (district), and directories remain laid out by the existing treemap/grid
-  engine. This is the fork's one inviolable constraint — see §3.
-
-Footprint (`GW`/`GH`) is the open sub-decision recorded in §5; the working
-default is that footprint may retain a faint file-size read since it is the
-cheapest channel and "how much code is here" is mild useful context, just not
-worth the dominant channel.
+  (district). This is the fork's one inviolable constraint — see §3.
 
 ---
 
@@ -115,24 +115,33 @@ produces. No analyzer rewrite is required for a first version.
 
 ### Files in scope
 
-**Backend (Phase 1 — blast radius):**
+**Backend (Phase 1 — blast radius → height) — DONE:**
 
-- `internal/deps/graph.go` (or a new `internal/deps/blastradius.go`): add a
-  function that, given `[]model.Road`, computes a transitive-dependent count per
-  building ID. Reverse the edges, then BFS/DFS from each node (or compute via
-  reverse reachability). Watch for cycles — the import graph can contain them;
-  use a visited set.
-- `internal/model/model.go`: `Building` gains a field to carry the metric, e.g.
-  `BlastRadius int json:"blastRadius"`. (`Exports int` already exists as
-  precedent for a non-layout numeric field.)
-- `internal/city/builder.go`: `AssembleState` already calls
-  `deps.BuildGraph(...)`; after roads are built, compute blast radius per
-  building and populate the new field before/within layout.
-- `internal/layout/packer.go`, function `footprint(loc)`: this is the single
-  place height (`GZ`) is assigned, currently `z = clamp(LOC/30, 3, 30)`. Height
-  must instead be a function of blast radius, normalized to a comparable visual
-  range (see §5 for the normalization decision). Footprint width/depth handling
-  depends on the §5 footprint decision.
+- `internal/deps/blastradius.go`: computes transitive-dependent count per
+  building ID via reverse BFS. Handles cycles with a visited set.
+- `internal/model/model.go`: `Building.BlastRadius int` field added.
+- `internal/city/builder.go`: `AssembleState` calls `ComputeBlastRadius` after
+  `BuildGraph`, populates the field. `MergeBuildings` preserves `BlastRadius`
+  on incremental updates (bug fix).
+- `internal/layout/packer.go`: `heightFromBlastRadius(br)` =
+  `clamp(3 + 3·log₂(1+BR), 3, 30)`. Log scale handles the long-tailed
+  distribution.
+
+**Backend (Phase 1.5 — blast radius → footprint) — DONE:**
+
+- `internal/layout/packer.go`: `footprint()` switched from `LOC` to
+  `BlastRadius`. `w = clamp(4 + √BR, 4, 12)`, `h = 0.8w`. Square root pairs
+  with the log₂ height: combined volume contrast is dramatic for high-BR files
+  without making BR=1 files absurd.
+
+**Backend (Phase 2a — treemap district sizing) — DONE:**
+
+- `internal/layout/engine.go`: uniform grid replaced with `squarify()` call,
+  weighted by total natural footprint area (Σ fw·fh) per district. No more
+  `__pad_` placeholder districts. District GH expands if packed buildings
+  overflow vertically.
+- `internal/layout/layout_test.go`: grid tests replaced with treemap invariant
+  tests (proportional area, no padding, count matches content).
 
 **Frontend (Phase 2 — churn color):**
 
@@ -157,11 +166,14 @@ produces. No analyzer rewrite is required for a first version.
 
 ### Explicitly NOT touched
 
-- **Layout/position logic** (`internal/layout/engine.go` district grid; the
-  treemap). Position stays directory-anchored.
 - **The WebSocket hub** (`internal/hub/`).
 - **agentwatch integration / agent tracking** (`internal/agents/`).
 - **The agent (UFO) layer**, scanner, watcher core, coverage system.
+
+**Note:** The original plan listed `internal/layout/engine.go` as not-touched.
+In practice, the cross-district compression problem (see §5) required replacing
+the uniform grid with a content-weighted treemap (Phase 2a). Position remains
+directory-anchored; only district *sizing* changed.
 
 ---
 
@@ -171,14 +183,25 @@ Reading the code inverts the sequencing we initially assumed. Blast radius is
 *cheaper* than churn, not harder, because the graph already exists and churn
 data does not.
 
-**Phase 1 — Blast radius as height (ship first).**
-Self-contained, backend-only, aggregates existing graph data, touches one height
-function plus a model field and the builder. High value on its own. This is the
-minimum that makes the fork's thesis real and the README honest.
+**Phase 1 — Blast radius as height. DONE.**
+Backend-only. `blastradius.go` computes transitive dependents via reverse BFS.
+`heightFromBlastRadius` uses log₂ scale, clamped to [3, 30].
 
-**Phase 2 — Churn as color (ship second).**
+**Phase 1.5 — Blast radius as footprint. DONE.**
+`footprint()` switched from LOC to BR. Also fixed a `MergeBuildings` bug that
+zeroed BR on incremental edits, and a frontend null-guard crash.
+
+**Phase 2a — Treemap district sizing. DONE.**
+Uniform grid replaced with `squarify()` weighted by total footprint area per
+district. Fixes the cross-district compression problem where high-BR files in
+dense districts looked smaller than low-BR files in sparse ones.
+
+**Phase 2b — HUD legend update. TODO.**
+Legend still reads "height = LOC" — now incorrect.
+
+**Phase 3 — Churn as color. TODO.**
 Requires a new git-history data pipeline plus frontend renderer and legend
-changes. Independent of Phase 1 and can land later without blocking it.
+changes. Independent of preceding phases.
 
 Each phase is independently shippable and independently useful.
 
@@ -201,21 +224,39 @@ possible later enhancement. (Position stability — the property that actually
 matters — is unaffected either way, since position is directory-anchored, not
 blast-radius-derived.)
 
-### Blast-radius → height normalization (OPEN — resolve in implementation)
+### Blast-radius → height normalization (DECIDED — implemented)
 
-Current height is `clamp(LOC/30, 3, 30)`. Blast radius is an unbounded integer
-count with a very different distribution (likely long-tailed: most files have
-near-zero dependents, a few have many). A linear map will make almost every
-building minimum-height with a handful of skyscrapers. Candidate approaches to
-decide during implementation: log scale, percentile/rank-based mapping, or
-clamped linear with an empirically chosen divisor. Keep the same visual range
-(~3–30) so the camera/layout math is undisturbed.
+**Decision:** Log₂ scale. `z = clamp(3 + 3·log₂(1 + BR), 3, 30)`. Each
+doubling of dependents adds a constant slice of height. The [3, 30] window is a
+hard requirement (per CLI review item #4): `packDistrict` rescales footprints
+but not `z`, so unclamped values would clip the camera frustum.
 
-### Footprint (GW/GH) meaning (OPEN — resolve in implementation)
+### Footprint (GW/GH) meaning (DECIDED — implemented)
 
-Working default: footprint retains a faint file-size read (cheapest channel,
-mild context). Alternative: free the channel for a third metric later. No commit
-required for Phase 1 beyond "footprint is not the dominant signal."
+**Decision:** Footprint encodes blast radius, not file size. The original
+working default ("footprint retains a faint file-size read") was reversed during
+Phase 1.5 implementation. Empirically, LOC-driven footprint in densely packed
+districts made high-LOC / low-BR files visually dominate over low-LOC / high-BR
+files — the inverse of the encoding's intent. Coupling footprint to BR makes
+visual volume consistently represent structural risk.
+
+Formula: `w = clamp(4 + √BR, 4, 12)`, `h = 0.8w`. Square root pairs with
+log₂ height: height grows fast at the low end (discriminates small BR values),
+while width grows gradually, so combined volume contrast is dramatic for
+genuine skyscrapers without making BR=1 buildings absurd.
+
+### Cross-district compression (DECIDED — implemented)
+
+Emerged during Phase 1.5 testing. Within a district, BR encoding was correct,
+but `packDistrict` shrinks footprints uniformly to fit a district rectangle,
+and the uniform grid gave all districts equal canvas area regardless of content.
+Result: the highest-BR file in the city (`cityStore.ts`, BR=37) was visually
+smaller than lower-BR files in sparser districts.
+
+**Decision:** Option 2 — weight district sizes by content. The `squarify`
+function (already in `internal/layout/treemap.go`, previously unused for
+districts) now sizes districts proportionally to their total natural footprint
+area. This preserves cross-district visual comparison.
 
 ### Churn noise (OPEN — Phase 2)
 
@@ -223,6 +264,14 @@ Git churn naively counts generated files, lockfiles, formatting passes, and mass
 renames as "hot." Phase 2 must filter these (e.g. respect `.gitignore`-style
 exclusions, ignore lockfiles/generated paths) or the hottest colors will be
 meaningless.
+
+### Confidence weighting (DECIDED)
+
+**Decision:** Binary count — all edges treated equal regardless of confidence.
+Per CLI review item #5: confidence-weighting muddies the "N files depend on
+this" semantics, decimals don't read off a skyline, and it decouples
+analyzer-quality work from height-encoding work. Implemented as-is in
+`blastradius.go`.
 
 ### Fork vs. contribute (DECIDED)
 

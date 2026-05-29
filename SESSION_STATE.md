@@ -1,137 +1,81 @@
-# Session handoff — Phase 1.5 in progress
+# Session handoff — Phase 2a complete
 
-**Last touched:** 2026-05-29. Prior session was Claude Code (desktop app), being
-handed off to terminal CC running in this directory so the working-directory
-mismatch goes away (and UFO/agent overlays start working).
+**Last touched:** 2026-05-29. Terminal Claude Code session in this directory.
 
 ---
 
 ## Committed and pushed
 
-- **Phase 1:** blast radius → building height. Backend-only. See
-  `internal/deps/blastradius.go`, `internal/model/model.go` (`BlastRadius`
-  field), `internal/city/builder.go` (`AssembleState` reorder), and
-  `internal/layout/packer.go` (`heightFromBlastRadius`).
-- **LICENSE:** Fletcher Bonds (fbonds) copyright line added alongside Mark
-  Ferree's.
-- **README + encoding-redesign.md:** §7 CLI review appended, README rewritten
-  as a "thought experiment, not a project" framing.
+Everything below is committed on `main`. Working tree is clean.
 
-## Uncommitted on disk right now
+- **Phase 1:** Blast radius → building height. `internal/deps/blastradius.go`
+  computes transitive dependents via reverse BFS.
+  `internal/layout/packer.go:heightFromBlastRadius` uses
+  `clamp(3 + 3·log₂(1+BR), 3, 30)`. `internal/model/model.go` has
+  `BlastRadius` field. `internal/city/builder.go:AssembleState` wires it up.
 
-Four distinct change groups:
+- **Phase 1.5a — Footprint refactor:** `internal/layout/packer.go:footprint()`
+  switched from `LOC` to `BlastRadius`. `w = clamp(4 + √BR, 4, 12)`,
+  `h = 0.8w`.
 
-### 1. Phase 1.5 footprint refactor (the design decision "go with #1")
-- `internal/layout/packer.go`: `footprint()` now takes `BlastRadius` instead
-  of `LOC`. New math: `w = clamp(4 + √BR, 4, 12)`, `h = 0.8w`. Reasoning
-  documented in the function comment.
-- `internal/layout/engine.go`: canvas-size calc updated for the new
-  signature.
-- `internal/layout/layout_test.go`: `TestFootprint` rewritten with BR cases.
+- **Phase 1.5b — MergeBuildings bug fix:** `internal/city/builder.go`
+  preserves `BlastRadius` on incremental edits (same as `GZ`).
+  Regression test in `internal/city/builder_test.go`.
 
-### 2. `MergeBuildings` BlastRadius preservation (bug fix discovered live)
-- `internal/city/builder.go`: `MergeBuildings` now preserves `BlastRadius`
-  from the existing entry, same way it preserves `GZ`. Without this, an
-  incremental edit (watcher fire) zeroed out the BR of the edited file while
-  the renderer kept the old `GZ`, causing the encoding to disagree with
-  itself.
-- `internal/city/builder_test.go`: added
-  `TestMergeBuildings_PreservesBlastRadius` regression test.
+- **Phase 1.5c — Frontend null guard:** `web/src/store/cityStore.ts`
+  `districtThresholds?.[]` optional chaining. Backend sends `null` not `{}`.
 
-### 3. Frontend defensive guard (pre-existing upstream bug, exposed at runtime)
-- `web/src/store/cityStore.ts`: `settings.districtThresholds[d.id]` →
-  `settings.districtThresholds?.[d.id]`. The backend serializes
-  `districtThresholds: null` rather than `{}`, and the frontend crashed at
-  startup before the city ever rendered.
+- **Phase 2a — Treemap district sizing:** `internal/layout/engine.go` uniform
+  grid replaced with `squarify()` weighted by total footprint area per
+  district. No more `__pad_` placeholder districts. District GH expands if
+  packed buildings overflow. Tests updated in
+  `internal/layout/layout_test.go` (proportional area, no padding, count
+  matches content).
 
-### 4. Build stub (not for commit)
-- `web/dist/placeholder.txt`: satisfies `//go:embed dist` in `web/static.go`
-  so `go run ./cmd/agentic-city` compiles before `npm run build` has been
-  executed. `web/dist/` is gitignored.
+- **README.md:** Updated to WIP status with progress table and known issues.
 
-**Tests:** `go test ./internal/{model,deps,city,layout}/...` — all green.
-`go vet ./internal/...` — clean.
+- **encoding-redesign.md:** Updated — status, decisions resolved (height
+  normalization, footprint, cross-district compression, confidence weighting),
+  phase sequencing reflects actual progress.
 
----
+- **LICENSE:** Fletcher Bonds copyright line added alongside Mark Ferree's.
 
-## What's currently running (probably)
+## What's running
 
-Two background processes started during the previous session. They may or may
-not survive the desktop-app shutdown; check with `lsof -i :8080,5173` and kill
-if needed:
+Two processes should be active (check with `lsof -i :8080,5173`):
 
-- **Backend:** `go run ./cmd/agentic-city -repo /Users/fletcherbonds/code/agentic-city-blast -addr :8080`
+- **Backend:** `go run ./cmd/agentic-city -repo . -addr :8080`
 - **Vite dev server:** `npm run dev` from `web/`
 
-To restart cleanly from terminal CC in this directory:
-
+System node is 14.15.0 (too old for Vite 5); use v22.20.0:
 ```bash
-# Backend (in one terminal or background):
-/opt/homebrew/bin/go run ./cmd/agentic-city -repo .
-
-# Frontend dev server (in another):
+/opt/homebrew/bin/go run ./cmd/agentic-city -repo . -addr :8080
 PATH="/Users/fletcherbonds/.nvm/versions/node/v22.20.0/bin:$PATH" npm --prefix web run dev
 ```
 
-System node is 14.15.0 (too old for Vite 5); v22.20.0 is the one used.
-Go was installed via Homebrew yesterday (2026-05-28): `/opt/homebrew/bin/go`.
-
 Browser: <http://localhost:5173>.
 
----
+## What's next
 
-## Where the visual currently lands
+| Priority | Item | Notes |
+|----------|------|-------|
+| 1 | HUD legend update | Legend reads "height = LOC" — now a lie. Quick frontend fix. |
+| 2 | Churn pipeline (Phase 3) | Git history analysis, recency-weighted score, color mapping. Net-new data pipeline. |
+| — | `encoding-redesign.md` §6 | Companion doc tasks (DESIGN.md pointer). Low priority. |
 
-The encoding is **mathematically correct** (blast radius drives both height
-and footprint) but **only reads well within a district**. Cross-district
-comparison is broken because `packDistrict` shrinks footprints uniformly to
-fit the district rectangle, and the upstream layout uses a **uniform grid**
-for districts regardless of content.
+## Known issues
 
-Concrete: `web/src/store/cityStore.ts` has the highest BR in the city (37).
-Natural width: 10. After dense-district packing: **GW=1.22**. Meanwhile
-`internal/model/coverage_history.go` (BR=28, sparser district) keeps full
-**GW=9.29** and visually dominates. The single highest-BR file looks smaller
-than the second-highest file because of district-packing density. Not what
-the design doc imagined.
+- **Agent overlay line cap:** Backend logs `parse failed: line exceeds size
+  cap: 1368464 > 1048576` warnings from agentwatch hitting an upstream JSONL
+  line cap. Agent tracking still works but some session updates are dropped.
+  Separate issue from this fork's work.
 
-## Open decision (this is where the next session picks up)
-
-User leans toward option 2 but hasn't committed. Three paths:
-
-1. **Accept it.** Within-district BR encoding is honest and useful; cross-
-   district isn't. Document it, move on.
-2. **Weight district sizes by content.** Switch `internal/layout/engine.go`
-   from uniform grid to the `squarify` function that already exists in
-   `internal/layout/treemap.go` (currently unused for districts). Districts
-   holding more or higher-BR buildings would get more canvas area, removing
-   the cross-district compression. Biggest change but cleanly fixes the
-   visibility problem.
-3. **Hybrid:** keep the grid for memorizability but drop the within-district
-   footprint scaling. Districts grow vertically as needed (precedent:
-   `TestLayout_BuildingsWithinDistrictBounds`). Risk: visual chaos as some
-   districts spill far below others.
-
-## Still deferred (called out in design doc)
-
-- **Frontend legend** still reads "height = LOC" — now a lie. Phase 1.5 HUD
-  cleanup.
-- **Color** still encodes language. Phase 2 (churn pipeline).
-- **encoding-redesign.md §5** still lists footprint as `OPEN`. Resolve to
-  reflect the Phase 1.5 decision.
-- **Agent overlays (UFOs):** invisible in the desktop-CC session because
-  that session's CWD was the test-plan project, not this repo. Terminal CC
-  here fixes that for free. There are also recurring `parse failed: line
-  exceeds size cap: 1368464 > 1048576` warnings in the backend log from
-  agentwatch hitting an upstream JSONL line cap — separate issue.
-
-## How to verify the current state visually
+## How to verify visually
 
 Reload <http://localhost:5173> after the backend is up.
 
-- Find `internal/model/coverage_history.go` in the `MODEL/` district — should
-  be obviously the tallest and biggest building in the city.
-- Find `web/src/store/cityStore.ts` in the `STORE/` district — should be
-  visibly ~2.5× wider than its neighbors (the test files), but absolutely
-  still small compared to the Go internals. This is the cross-district
-  problem above.
+- Districts should be **different sizes** — the treemap gives more canvas area
+  to districts with higher total blast radius.
+- `internal/model/coverage_history.go` should still be the tallest building.
+- `web/src/store/cityStore.ts` should now be visually comparable across
+  districts (no longer crushed by dense-district packing).
