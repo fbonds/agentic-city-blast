@@ -220,6 +220,13 @@ function drawBuilding(
 
   const strokeColor = statusToColor(b.status) ?? SD.base0;
 
+  // Opaque face colors: blend tint with the dark background so buildings are
+  // solid and don't show geometry behind them.
+  // Right face = brighter (light-facing), left face = darker (shadow), roof = brightest.
+  const rightFill = `rgb(${Math.round(tR * 0.4 + 22)},${Math.round(tG * 0.4 + 27)},${Math.round(tB * 0.4 + 33)})`;
+  const leftFill  = `rgb(${Math.round(tR * 0.3 + 16)},${Math.round(tG * 0.3 + 21)},${Math.round(tB * 0.3 + 26)})`;
+  const roofFill  = `rgb(${Math.round(tR * 0.5 + 30)},${Math.round(tG * 0.5 + 35)},${Math.round(tB * 0.5 + 40)})`;
+
   // --- 1. Footprint (very faint tint on ground) ---
   ctx.fillStyle = `rgba(${tR},${tG},${tB},0.05)`;
   ctx.beginPath();
@@ -230,89 +237,44 @@ function drawBuilding(
   ctx.closePath();
   ctx.fill();
 
-  // --- 2. Base outline — frontmost edges at full opacity, far-back edges dimmed ---
-  // A→B (front-right) and D→A (front-left) are the nearest visible base edges — bright.
-  // C→D goes to the far-back corner C and is significantly dimmed for depth perception.
-  ctx.strokeStyle = strokeColor;
-  ctx.lineWidth = 0.85;
-  ctx.globalAlpha = FRONT_EDGE_ALPHA;
-  ctx.beginPath();
-  ctx.moveTo(A[0], A[1]);
-  ctx.lineTo(B[0], B[1]);  // A→B: front edge of right face (nearest corner → bright)
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(D[0], D[1]);
-  ctx.lineTo(A[0], A[1]);  // D→A: left silhouette edge (front-left → bright)
-  ctx.stroke();
-  // C→D: lower silhouette edge toward the far-back corner — dim for depth
-  ctx.globalAlpha = BACK_EDGE_ALPHA;
-  ctx.beginPath();
-  ctx.moveTo(C[0], C[1]);
-  ctx.lineTo(D[0], D[1]);
-  ctx.stroke();
-  ctx.globalAlpha = 1;
+  // --- 2. Side faces (opaque solid fill) ---
+  // Only draw the two visible faces in standard isometric view.
+  // No hidden back edges — opaque buildings occlude them naturally.
 
-  // --- 3. Hidden back base edge B→C (dashed) + right silhouette C→C2 (solid) ---
-  // B→C lies inside the 2D projection hull — it is hidden behind the right face in 3D.
-  // C→C2 is the rightmost vertical boundary of the building silhouette — a visible edge.
-  ctx.save();
-  ctx.setLineDash([2, 2]);
-  ctx.strokeStyle = SD.base01;
-  ctx.lineWidth = 0.5;
-  ctx.globalAlpha = BACK_EDGE_ALPHA;  // furthest-back hidden edge — very dim
-  ctx.beginPath();
-  ctx.moveTo(B[0], B[1]);
-  ctx.lineTo(C[0], C[1]);
-  ctx.stroke();
-  ctx.restore();
-  ctx.strokeStyle = strokeColor;
-  ctx.lineWidth = 0.85;
-  ctx.beginPath();
-  ctx.moveTo(C[0], C[1]);
-  ctx.lineTo(C2[0], C2[1]);
-  ctx.stroke();
-
-  // --- 4. Side faces (language-tinted, semi-transparent) ---
-
-  // Upper-right face (A -> B -> B2 -> A2) — outline only
-  ctx.strokeStyle = strokeColor;
-  ctx.lineWidth = 0.85;
+  // Upper-right face (A -> B -> B2 -> A2)
+  ctx.fillStyle = rightFill;
   ctx.beginPath();
   ctx.moveTo(A[0], A[1]);
   ctx.lineTo(B[0], B[1]);
   ctx.lineTo(B2[0], B2[1]);
   ctx.lineTo(A2[0], A2[1]);
   ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = 0.85;
   ctx.stroke();
 
-  // Lower-left face — draw per-segment so the back-left vertical D→D2 can be dimmed.
-  // A→D (front-left base edge) and A2→A (front vertical) stay bright.
-  // D→D2 is the "back-top-left" vertical identified in the depth-occlusion spec — dim it.
-  ctx.globalAlpha = FRONT_EDGE_ALPHA;
+  // Lower-left face (A -> D -> D2 -> A2)
+  ctx.fillStyle = leftFill;
   ctx.beginPath();
   ctx.moveTo(A[0], A[1]);
-  ctx.lineTo(D[0], D[1]);  // A→D: front-left base edge
+  ctx.lineTo(D[0], D[1]);
+  ctx.lineTo(D2[0], D2[1]);
+  ctx.lineTo(A2[0], A2[1]);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = 0.85;
   ctx.stroke();
-  ctx.globalAlpha = BACK_VERT_ALPHA;
-  ctx.beginPath();
-  ctx.moveTo(D[0], D[1]);
-  ctx.lineTo(D2[0], D2[1]);  // D→D2: back-left vertical — significantly dimmed
-  ctx.stroke();
-  ctx.globalAlpha = MID_EDGE_ALPHA;
-  ctx.beginPath();
-  ctx.moveTo(D2[0], D2[1]);
-  ctx.lineTo(A2[0], A2[1]);  // D2→A2: transitions from back-left to front-near
-  ctx.stroke();
-  ctx.globalAlpha = FRONT_EDGE_ALPHA;
-  ctx.beginPath();
-  ctx.moveTo(A2[0], A2[1]);
-  ctx.lineTo(A[0], A[1]);  // A2→A: front vertical
-  ctx.stroke();
-  ctx.globalAlpha = 1;
 
-  // --- 5. Roof (A2 -> B2 -> C2 -> D2) ---
-  // Fill first (behind all strokes).
-  ctx.fillStyle = `rgba(${tR},${tG},${tB},0.20)`;
+  // Right silhouette edge C→C2 (the far-right vertical visible in isometric)
+  ctx.beginPath();
+  ctx.moveTo(C[0], C[1]);
+  ctx.lineTo(C2[0], C2[1]);
+  ctx.stroke();
+
+  // --- 3. Roof (A2 -> B2 -> C2 -> D2) ---
+  ctx.fillStyle = roofFill;
   ctx.beginPath();
   ctx.moveTo(A2[0], A2[1]);
   ctx.lineTo(B2[0], B2[1]);
@@ -320,27 +282,8 @@ function drawBuilding(
   ctx.lineTo(D2[0], D2[1]);
   ctx.closePath();
   ctx.fill();
-  // Roof edges: near/front bright, far-back corners dim.
   ctx.strokeStyle = strokeColor;
   ctx.lineWidth = 0.95;
-  ctx.globalAlpha = FRONT_EDGE_ALPHA;
-  ctx.beginPath();
-  ctx.moveTo(A2[0], A2[1]);
-  ctx.lineTo(B2[0], B2[1]);  // A2→B2: near-front roof edge — bright
-  ctx.stroke();
-  ctx.globalAlpha = BACK_EDGE_ALPHA;
-  ctx.beginPath();
-  ctx.moveTo(B2[0], B2[1]);
-  ctx.lineTo(C2[0], C2[1]);  // B2→C2: roof edge toward far-back corner — dim
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(C2[0], C2[1]);
-  ctx.lineTo(D2[0], D2[1]);  // C2→D2: roof edge toward far-back corner — dim
-  ctx.stroke();
-  ctx.globalAlpha = MID_EDGE_ALPHA;
-  ctx.beginPath();
-  ctx.moveTo(D2[0], D2[1]);
-  ctx.lineTo(A2[0], A2[1]);  // D2→A2: left roof edge back-to-front
   ctx.stroke();
   ctx.globalAlpha = 1;
 
@@ -349,8 +292,7 @@ function drawBuilding(
     drawAlarmFlash(ctx, A, B, D, A2, B2, C2, D2, time);
   }
 
-  // --- 7. Window dots (coverage pattern on roof) ---
-  drawWindowDots(ctx, camera, b);
+  // Window dots removed — added visual noise without aiding building identification.
 
   // --- 8. Smoke/glitch lines on CRIT buildings ---
   if (b.status === 'CRIT') {

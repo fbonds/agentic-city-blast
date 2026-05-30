@@ -12,6 +12,7 @@ import { AlarmOverlay } from '../orchestration/AlarmOverlay';
 import { CoverageDropToast } from '../orchestration/CoverageDropToast';
 import { useCoverageWatcher } from '../hooks/useCoverageWatcher';
 import { CoverageAlarmOverlay } from '../orchestration/CoverageAlarmOverlay';
+import { GuideOverlay } from './GuideOverlay';
 
 export function HudOverlay(): JSX.Element {
   const highContrast = useUiStore((s) => s.highContrast);
@@ -44,6 +45,7 @@ export function HudOverlay(): JSX.Element {
       <DispatchWizard />
       <CommandPalette />
       <CoverageDropToast />
+      <GuideOverlay />
     </>
   );
 }

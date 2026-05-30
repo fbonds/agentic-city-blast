@@ -291,6 +291,11 @@ function drawHoveringAgent(
   // Draw tractor beam first (underneath UFO)
   drawTractorBeam(ctx, sx, sy, roofPt, agent, time);
 
+  // Cow abduction on high blast radius targets
+  if (target.blastRadius >= 20) {
+    drawCowAbduction(ctx, sx, sy, roofPt, time, clampedScale);
+  }
+
   // Draw UFO disc + dome
   drawUFO(ctx, agent, sx, sy, camera.scale, time, animManager, selected);
 }
@@ -604,17 +609,7 @@ function drawTractorBeam(
   }
   ctx.restore();
 
-  // ── Impact ellipse ────────────────────────────────────────────────────────
-  const impactAlpha = 0.25 + 0.15 * Math.sin(time * 0.004);
-  ctx.save();
-  ctx.globalAlpha = impactAlpha;
-  ctx.strokeStyle = col;
-  ctx.lineWidth = 1.2;
-  ctx.setLineDash(dashPattern);
-  ctx.beginPath();
-  ctx.ellipse(bx, by, BEAM_BOTTOM_HALF * 2.5, BEAM_BOTTOM_HALF * 1.2, 0, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.restore();
+  // Impact ellipse removed — tractor beam trapezoid is sufficient.
 }
 
 function dashForConfidence(confidence: string): number[] {
@@ -655,4 +650,122 @@ function drawFlightPath(
   }
   ctx.stroke();
   ctx.restore();
+}
+
+// ── Cow abduction (high blast radius easter egg) ────────────────────────────
+//
+// When an agent's tractor beam targets a building with blast radius >= 20,
+// a small vector cow is drawn being pulled up the beam, with a floating
+// "moooooooo!" that fades as it rises. This is a genuine alert dressed as
+// humor: an agent is touching something structurally dangerous.
+
+/** Cycle period for the cow's vertical position along the beam (ms). */
+const COW_CYCLE_MS = 4000;
+
+function drawCowAbduction(
+  ctx: CanvasRenderingContext2D,
+  ufoX: number,
+  ufoY: number,
+  roofPt: [number, number],
+  time: number,
+  scale: number,
+): void {
+  // Cow rises from the rooftop toward the UFO on a repeating cycle.
+  // t=0 at the roof, t=1 at the UFO, then resets.
+  const t = (time % COW_CYCLE_MS) / COW_CYCLE_MS;
+  const cowX = roofPt[0] + (ufoX - roofPt[0]) * t;
+  const cowY = roofPt[1] + (ufoY - roofPt[1]) * t;
+
+  const s = scale * 0.7;
+
+  ctx.save();
+  ctx.translate(cowX, cowY);
+  ctx.scale(s, s);
+
+  // Slight rotation as the cow rises — tumbling in the beam
+  ctx.rotate(Math.sin(time * 0.003) * 0.2);
+
+  // ── Body (white ellipse) ──────────────────────────────────────────────
+  ctx.fillStyle = '#d8d6c8';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 8, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#3a4148';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+
+  // ── Spots ─────────────────────────────────────────────────────────────
+  ctx.fillStyle = '#525a62';
+  ctx.beginPath();
+  ctx.ellipse(-3, -1, 2.5, 2, 0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(2, 1, 2, 1.5, -0.4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ── Head ──────────────────────────────────────────────────────────────
+  ctx.fillStyle = '#d8d6c8';
+  ctx.beginPath();
+  ctx.ellipse(9, -2, 3.5, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#3a4148';
+  ctx.lineWidth = 0.7;
+  ctx.stroke();
+
+  // ── Eyes (two dots) ───────────────────────────────────────────────────
+  ctx.fillStyle = '#0d1014';
+  ctx.beginPath();
+  ctx.arc(10, -3, 0.7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(11.5, -2.5, 0.7, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ── Horns ─────────────────────────────────────────────────────────────
+  ctx.strokeStyle = '#a9923a';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(8.5, -4.5);
+  ctx.lineTo(7.5, -6.5);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(10, -4.5);
+  ctx.lineTo(11, -6.5);
+  ctx.stroke();
+
+  // ── Legs (four dangling lines) ────────────────────────────────────────
+  ctx.strokeStyle = '#3a4148';
+  ctx.lineWidth = 1;
+  const legAngle = Math.sin(time * 0.005) * 0.3; // flailing
+  for (const lx of [-5, -2, 2, 5]) {
+    ctx.beginPath();
+    ctx.moveTo(lx, 4);
+    ctx.lineTo(lx + Math.sin(legAngle + lx) * 2, 9);
+    ctx.stroke();
+  }
+
+  // ── Tail ──────────────────────────────────────────────────────────────
+  ctx.strokeStyle = '#3a4148';
+  ctx.lineWidth = 0.7;
+  ctx.beginPath();
+  ctx.moveTo(-8, 0);
+  ctx.quadraticCurveTo(-11, -2 + Math.sin(time * 0.006) * 2, -12, -4);
+  ctx.stroke();
+
+  ctx.restore();
+
+  // ── "moooooooo!" text ─────────────────────────────────────────────────
+  // Appears when the cow is in the lower half of the beam, fades as it rises.
+  if (t < 0.6) {
+    const textAlpha = (1 - t / 0.6) * 0.85;
+    const textX = cowX + 14 * scale;
+    const textY = cowY - 8 * scale;
+
+    ctx.save();
+    ctx.globalAlpha = textAlpha;
+    ctx.font = `italic ${Math.round(9 * scale)}px monospace`;
+    ctx.fillStyle = '#d8d6c8';
+    ctx.fillText('moooooooo!', textX, textY);
+    ctx.restore();
+  }
 }

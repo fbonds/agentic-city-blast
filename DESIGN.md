@@ -1,5 +1,12 @@
 # Agent City — Architecture
 
+> **Fork note:** This fork (`agentic-city-blast`) changes the visual encoding
+> model. Height and footprint encode **blast radius** (transitive dependents),
+> color encodes **churn** (recent git change frequency), and districts are sized
+> by a content-weighted treemap. The original encodes file size as height and
+> language as color. See [encoding-redesign.md](encoding-redesign.md) for the
+> full rationale and implementation record.
+
 > Manage AI coding agents like a SimCity mayor, not a chat user.
 > Buildings are files, districts are directories, UFO agents are AI coding sessions.
 > Phase 1: see the city. Phase 2: run the city.

@@ -3,11 +3,9 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"io/fs"
 	"log/slog"
 	"math"
-	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -138,13 +136,18 @@ func main() {
 	}
 }
 
-func generateDemoState() model.CityState {
-	rng := rand.New(rand.NewSource(42))
+// ── Demo mode ─────────────────────────────────────────────────────────────────
+//
+// The demo creates a fictional-but-realistic city with scripted agent
+// choreography and timed narration that builds toward a cow abduction on
+// a high blast-radius file. The guided tour runs ~35 seconds before
+// settling into a normal animation loop.
 
+const cowTargetID = "pkg/core/config.go"
+
+func generateDemoState() model.CityState {
 	districts := makeDemoDistricts()
-	buildings := makeDemoBuildings(rng, districts)
-	agents := makeDemoAgents(rng, buildings)
-	activities := makeDemoActivities()
+	buildings := makeDemoBuildings(districts)
 
 	var totalLOC int
 	var coveredCount int
@@ -163,24 +166,24 @@ func generateDemoState() model.CityState {
 
 	return model.CityState{
 		RepoInfo: model.RepoInfo{
-			Name:       "agent-city",
+			Name:       "acme-platform",
 			Branch:     "main",
-			HeadCommit: "ada42f8",
+			HeadCommit: "e3a91b7",
 			CIStatus:   "passing",
 		},
 		Districts:  districts,
 		Buildings:  buildings,
-		Roads:      makeDemoRoads(buildings, rng),
-		Agents:     agents,
-		Activities: activities,
+		Roads:      makeDemoRoads(),
+		Agents:     makeDemoAgents(),
+		Activities: []model.ActivityEvent{}, // narration injected by ticker
 		Stats: model.RepoStats{
 			FileCount:    len(buildings),
 			TotalLOC:     totalLOC,
 			Coverage:     avgCoverage,
 			OpenPRs:      3,
-			BugCount:     2,
-			TestsPassing: 47,
-			TestsTotal:   52,
+			BugCount:     1,
+			TestsPassing: 89,
+			TestsTotal:   94,
 		},
 		Timestamp: time.Now().UnixMilli(),
 	}
@@ -188,266 +191,343 @@ func generateDemoState() model.CityState {
 
 func makeDemoDistricts() []model.District {
 	return []model.District{
-		{ID: "cmd/agentic-city", Label: "CMD/", ParentID: "", GX: 0, GY: 0, GW: 10, GH: 8},
-		{ID: "internal/model", Label: "MODEL/", ParentID: "internal", GX: 10, GY: 0, GW: 8, GH: 8},
-		{ID: "internal/agents", Label: "AGENTS/", ParentID: "internal", GX: 18, GY: 0, GW: 12, GH: 10},
-		{ID: "internal/layout", Label: "LAYOUT/", ParentID: "internal", GX: 0, GY: 8, GW: 14, GH: 10},
-		{ID: "internal/hub", Label: "HUB/", ParentID: "internal", GX: 14, GY: 8, GW: 16, GH: 10},
+		{ID: "pkg/api", Label: "API/", ParentID: "", GX: 0, GY: 0, GW: 12, GH: 8},
+		{ID: "pkg/core", Label: "CORE/", ParentID: "", GX: 12, GY: 0, GW: 12, GH: 10},
+		{ID: "pkg/auth", Label: "AUTH/", ParentID: "", GX: 24, GY: 0, GW: 10, GH: 8},
+		{ID: "pkg/ui", Label: "UI/", ParentID: "", GX: 0, GY: 10, GW: 16, GH: 10},
+		{ID: "internal", Label: "INTERNAL/", ParentID: "", GX: 16, GY: 10, GW: 18, GH: 10},
 	}
 }
 
-type demoFile struct {
+// demoBuilding defines a building with all encoding-relevant fields.
+type demoBuilding struct {
 	name       string
 	districtID string
 	lang       string
 	loc        int
+	br         int     // blast radius
+	churn      float64 // normalized [0,1]
+	coverage   float64 // -1=unknown, 0-1
+	status     string
 }
 
-func makeDemoBuildings(rng *rand.Rand, districts []model.District) []model.Building {
-	files := []demoFile{
-		// cmd/agentic-city
-		{"main.go", "cmd/agentic-city", "go", 180},
-		{"server.go", "cmd/agentic-city", "go", 95},
+func makeDemoBuildings(districts []model.District) []model.Building {
+	specs := []demoBuilding{
+		// pkg/api — HTTP handlers, leaf-ish
+		{"router.go", "pkg/api", "go", 180, 3, 0.20, 0.85, "ok"},
+		{"handlers.go", "pkg/api", "go", 220, 2, 0.40, 0.72, "ok"},
+		{"middleware.go", "pkg/api", "go", 95, 1, 0.10, 0.90, "ok"},
+		{"errors.go", "pkg/api", "go", 60, 5, 0.15, 0.80, "ok"},
 
-		// internal/model
-		{"model.go", "internal/model", "go", 120},
-		{"types.go", "internal/model", "go", 60},
+		// pkg/core — domain logic, contains the cow target
+		{"engine.go", "pkg/core", "go", 310, 8, 0.50, 0.65, "ok"},
+		{"config.go", "pkg/core", "go", 145, 25, 0.70, 0.55, "warn"}, // COW TARGET
+		{"types.go", "pkg/core", "go", 85, 15, 0.30, 0.78, "ok"},
+		{"validate.go", "pkg/core", "go", 120, 4, 0.20, 0.88, "ok"},
+		{"transform.go", "pkg/core", "go", 175, 6, 0.45, 0.70, "ok"},
 
-		// internal/agents
-		{"tracker.go", "internal/agents", "go", 210},
-		{"racer.go", "internal/agents", "go", 175},
-		{"spawner.go", "internal/agents", "go", 140},
-		{"prompts.go", "internal/agents", "go", 85},
-		{"session.go", "internal/agents", "go", 130},
-		{"mapper.go", "internal/agents", "go", 95},
+		// pkg/auth
+		{"jwt.go", "pkg/auth", "go", 130, 3, 0.10, 0.92, "ok"},
+		{"oauth.go", "pkg/auth", "go", 195, 2, 0.25, 0.68, "ok"},
+		{"session.go", "pkg/auth", "go", 160, 7, 0.35, 0.75, "ok"},
+		{"rbac.go", "pkg/auth", "go", 110, 4, 0.15, 0.82, "ok"},
 
-		// internal/layout
-		{"treemap.go", "internal/layout", "go", 280},
-		{"packer.go", "internal/layout", "go", 190},
-		{"engine.go", "internal/layout", "go", 245},
-		{"coords.go", "internal/layout", "go", 75},
+		// pkg/ui — frontend
+		{"App.tsx", "pkg/ui", "tsx", 380, 5, 0.60, 0.50, "ok"},
+		{"Dashboard.tsx", "pkg/ui", "tsx", 290, 3, 0.55, 0.45, "ok"},
+		{"Settings.tsx", "pkg/ui", "tsx", 175, 1, 0.80, 0.60, "ok"},
+		{"Table.tsx", "pkg/ui", "tsx", 210, 2, 0.30, 0.72, "ok"},
+		{"Chart.tsx", "pkg/ui", "tsx", 245, 1, 0.40, 0.58, "ok"},
+		{"store.ts", "pkg/ui", "ts", 95, 10, 0.50, 0.65, "ok"},
+		{"api.ts", "pkg/ui", "ts", 120, 3, 0.35, 0.80, "ok"},
 
-		// internal/hub
-		{"hub.go", "internal/hub", "go", 310},
-		{"state.go", "internal/hub", "go", 220},
-		{"client.go", "internal/hub", "go", 145},
-		{"broadcast.go", "internal/hub", "go", 110},
-
-		// Synthetic TS/TSX files for variety
-		{"App.tsx", "internal/hub", "tsx", 380},
-		{"CityCanvas.tsx", "internal/hub", "tsx", 495},
-		{"AgentRoster.tsx", "internal/hub", "tsx", 260},
-		{"ActivityLog.tsx", "internal/hub", "tsx", 175},
-		{"HUD.tsx", "internal/hub", "tsx", 140},
-		{"store.ts", "internal/hub", "ts", 95},
-		{"api.ts", "internal/hub", "ts", 120},
-		{"types.ts", "internal/hub", "ts", 85},
-		{"useWebSocket.ts", "internal/hub", "ts", 155},
-		{"useCity.ts", "internal/hub", "ts", 90},
-
-		// Python tooling
-		{"analyze.py", "internal/agents", "py", 145},
-		{"metrics.py", "internal/agents", "py", 210},
+		// internal — infra
+		{"db.go", "internal", "go", 280, 12, 0.20, 0.85, "ok"},
+		{"logger.go", "internal", "go", 75, 18, 0.05, 0.95, "ok"},
+		{"errors.go", "internal", "go", 90, 14, 0.10, 0.90, "ok"},
+		{"testutil.go", "internal", "go", 155, 0, 0.15, -1, "unknown"},
+		{"migrate.go", "internal", "go", 190, 2, 0.60, 0.70, "warn"},
 	}
-
-	statuses := []string{"ok", "ok", "ok", "warn", "err", "unknown"}
-
-	buildings := make([]model.Building, 0, len(files))
 
 	districtByID := map[string]model.District{}
 	districtCursor := map[string][2]float64{}
 	for _, d := range districts {
 		districtByID[d.ID] = d
-		districtCursor[d.ID] = [2]float64{d.GX + 0.5, d.GY + 0.5}
+		districtCursor[d.ID] = [2]float64{d.GX + 1, d.GY + 1}
 	}
 
-	for i, f := range files {
-		loc := f.loc + rng.Intn(100) - 50
-		if loc < 50 {
-			loc = 50
-		}
-
-		coverage := rng.Float64()
-		if rng.Intn(5) == 0 {
-			coverage = -1 // unknown
-		}
-
-		status := statuses[rng.Intn(len(statuses))]
-
-		w := clamp(math.Sqrt(float64(loc)/20.0), 2, 8)
+	buildings := make([]model.Building, 0, len(specs))
+	for _, s := range specs {
+		w := clamp(4.0+math.Sqrt(float64(s.br)), 4, 12)
 		h := w * 0.8
-		z := clamp(float64(loc)/30.0, 3, 30)
+		z := clamp(3.0+3.0*math.Log2(1.0+float64(s.br)), 3, 30)
 
-		cursor := districtCursor[f.districtID]
+		cursor := districtCursor[s.districtID]
 		gx := cursor[0]
 		gy := cursor[1]
 
-		districtCursor[f.districtID] = [2]float64{gx + w + 0.5, gy}
-		if d := districtByID[f.districtID]; gx+w+0.5 > d.GX+d.GW-1 {
-			districtCursor[f.districtID] = [2]float64{d.GX + 0.5, gy + h + 0.5}
+		districtCursor[s.districtID] = [2]float64{gx + w + 1, gy}
+		if d := districtByID[s.districtID]; gx+w+1 > d.GX+d.GW-1 {
+			districtCursor[s.districtID] = [2]float64{d.GX + 1, gy + h + 1}
 		}
 
 		buildings = append(buildings, model.Building{
-			ID:         f.districtID + "/" + f.name,
-			DistrictID: f.districtID,
-			Label:      f.name,
-			Language:   f.lang,
-			LOC:        loc,
-			Coverage:   coverage,
-			Status:     status,
-			Editing:    i < 3 && rng.Intn(3) == 0,
-			Exports:    rng.Intn(15),
-			GX:         gx,
-			GY:         gy,
-			GW:         w,
-			GH:         h,
-			GZ:         z,
-			Churn:      rng.Float64(),
+			ID:          s.districtID + "/" + s.name,
+			DistrictID:  s.districtID,
+			Label:       s.name,
+			Language:    s.lang,
+			LOC:         s.loc,
+			BlastRadius: s.br,
+			Churn:       s.churn,
+			Coverage:    s.coverage,
+			Status:      s.status,
+			Exports:     s.br, // approximate
+			GX:          gx,
+			GY:          gy,
+			GW:          w,
+			GH:          h,
+			GZ:          z,
 		})
 	}
 
 	return buildings
 }
 
-func makeDemoAgents(rng *rand.Rand, buildings []model.Building) []model.Agent {
-	colors := []string{"blue", "blue", "green", "orange"}
-	tasks := []string{
-		"Implementing WebSocket hub",
-		"Refactoring treemap layout",
-		"Writing unit tests",
-		"Fixing coverage parser",
-		"Adding agent tracker",
-		"Optimizing packer algorithm",
-		"Reviewing API handlers",
-		"Debugging race condition",
+func makeDemoAgents() []model.Agent {
+	return []model.Agent{
+		{
+			ID: "claude:demo-001", Color: "blue", Mode: "work",
+			Task: "Refactoring error handling", Progress: 45,
+			TargetID: "pkg/api/handlers.go", LocationConfidence: "exact",
+		},
+		{
+			ID: "claude:demo-002", Color: "green", Mode: "work",
+			Task: "Writing migration tests", Progress: 60,
+			TargetID: "internal/migrate.go", LocationConfidence: "inferred",
+		},
+		{
+			ID: "claude:demo-004", Color: "blue", Mode: "fly",
+			Task: "Reviewing auth flow", Progress: 20,
+			FromID: "pkg/auth/jwt.go", ToID: "pkg/auth/session.go",
+			FlyProgress: 0.0,
+		},
 	}
-
-	agents := make([]model.Agent, 0, 8)
-
-	// 4 working agents — parked on buildings
-	for i := 0; i < 4; i++ {
-		b := buildings[rng.Intn(len(buildings))]
-		agents = append(agents, model.Agent{
-			ID:                 fmt.Sprintf("claude:session-%04d", i+1),
-			Color:              colors[i%len(colors)],
-			Mode:               "work",
-			Task:               tasks[i%len(tasks)],
-			Progress:           20 + rng.Intn(70),
-			TargetID:           b.ID,
-			LocationConfidence: "inferred",
-		})
-	}
-
-	// 4 flying agents — on looping paths between buildings
-	for i := 0; i < 4; i++ {
-		fromIdx := rng.Intn(len(buildings))
-		toIdx := (fromIdx + 1 + rng.Intn(len(buildings)-1)) % len(buildings)
-		family := []string{"claude", "codex", "gemini"}[i%3]
-		agents = append(agents, model.Agent{
-			ID:          fmt.Sprintf("%s:session-%04d", family, i+10),
-			Color:       colors[(i+1)%len(colors)],
-			Mode:        "fly",
-			Task:        tasks[(i+4)%len(tasks)],
-			Progress:    rng.Intn(100),
-			FromID:      buildings[fromIdx].ID,
-			ToID:        buildings[toIdx].ID,
-			FlyProgress: rng.Float64(),
-		})
-	}
-
-	return agents
 }
 
-func makeDemoRoads(buildings []model.Building, rng *rand.Rand) []model.Road {
-	roads := make([]model.Road, 0, 20)
-	confidences := []string{"exact", "inferred", "weak"}
-	for i := 0; i < 20 && i < len(buildings)-1; i++ {
-		from := buildings[i]
-		to := buildings[(i+3+rng.Intn(5))%len(buildings)]
-		if from.ID == to.ID {
-			continue
-		}
-		roads = append(roads, model.Road{
-			FromID:     from.ID,
-			ToID:       to.ID,
-			Weight:     1 + rng.Intn(5),
-			Confidence: confidences[rng.Intn(len(confidences))],
-		})
+func makeDemoRoads() []model.Road {
+	// Intentional dependency fan toward high-BR nodes.
+	return []model.Road{
+		// Everything depends on config.go (BR=25)
+		{FromID: "pkg/api/router.go", ToID: cowTargetID, Weight: 3, Confidence: "exact"},
+		{FromID: "pkg/api/handlers.go", ToID: cowTargetID, Weight: 2, Confidence: "exact"},
+		{FromID: "pkg/core/engine.go", ToID: cowTargetID, Weight: 5, Confidence: "exact"},
+		{FromID: "pkg/auth/session.go", ToID: cowTargetID, Weight: 2, Confidence: "exact"},
+		{FromID: "pkg/ui/store.ts", ToID: cowTargetID, Weight: 1, Confidence: "inferred"},
+		{FromID: "internal/db.go", ToID: cowTargetID, Weight: 3, Confidence: "exact"},
+		{FromID: "pkg/core/transform.go", ToID: cowTargetID, Weight: 2, Confidence: "exact"},
+		{FromID: "pkg/auth/rbac.go", ToID: cowTargetID, Weight: 1, Confidence: "inferred"},
+		{FromID: "pkg/core/validate.go", ToID: cowTargetID, Weight: 2, Confidence: "exact"},
+
+		// logger.go (BR=18) — many importers
+		{FromID: "pkg/api/middleware.go", ToID: "internal/logger.go", Weight: 1, Confidence: "exact"},
+		{FromID: "pkg/core/engine.go", ToID: "internal/logger.go", Weight: 2, Confidence: "exact"},
+		{FromID: "pkg/auth/oauth.go", ToID: "internal/logger.go", Weight: 1, Confidence: "exact"},
+		{FromID: "internal/db.go", ToID: "internal/logger.go", Weight: 3, Confidence: "exact"},
+		{FromID: "internal/migrate.go", ToID: "internal/logger.go", Weight: 1, Confidence: "exact"},
+		{FromID: "pkg/api/handlers.go", ToID: "internal/logger.go", Weight: 1, Confidence: "inferred"},
+
+		// types.go (BR=15)
+		{FromID: "pkg/core/engine.go", ToID: "pkg/core/types.go", Weight: 4, Confidence: "exact"},
+		{FromID: "pkg/api/handlers.go", ToID: "pkg/core/types.go", Weight: 2, Confidence: "exact"},
+		{FromID: "pkg/core/validate.go", ToID: "pkg/core/types.go", Weight: 3, Confidence: "exact"},
+		{FromID: "pkg/ui/store.ts", ToID: "pkg/core/types.go", Weight: 1, Confidence: "inferred"},
+
+		// errors.go (BR=14)
+		{FromID: "pkg/api/handlers.go", ToID: "internal/errors.go", Weight: 2, Confidence: "exact"},
+		{FromID: "pkg/core/engine.go", ToID: "internal/errors.go", Weight: 1, Confidence: "exact"},
+		{FromID: "pkg/auth/session.go", ToID: "internal/errors.go", Weight: 1, Confidence: "exact"},
+
+		// Misc realistic edges
+		{FromID: "pkg/api/router.go", ToID: "pkg/api/handlers.go", Weight: 3, Confidence: "exact"},
+		{FromID: "pkg/ui/App.tsx", ToID: "pkg/ui/store.ts", Weight: 2, Confidence: "exact"},
+		{FromID: "pkg/ui/Dashboard.tsx", ToID: "pkg/ui/api.ts", Weight: 1, Confidence: "inferred"},
 	}
-	return roads
 }
 
-func makeDemoActivities() []model.ActivityEvent {
-	now := time.Now()
-	entries := []struct {
-		ago      time.Duration
-		who      string
-		message  string
-		color    string
-		severity string
-	}{
-		{5 * time.Second, "claude:session-0001", "Wrote hub.go — broadcast fan-out complete", "#4a7a9c", "info"},
-		{23 * time.Second, "CI", "Test suite: 47/52 passing", "#6a8a4a", "warn"},
-		{45 * time.Second, "claude:session-0002", "Refactored treemap — squarified algorithm", "#4a7a9c", "info"},
-		{2 * time.Minute, "codex:session-0010", "Added Python metrics analyzer", "#6a8a4a", "info"},
-		{3 * time.Minute, "claude:session-0003", "Fixed race condition in watcher debounce", "#4a7a9c", "info"},
-		{5 * time.Minute, "YOU", "Dispatched 3 agents to layout work", "#b06a3a", "info"},
-		{8 * time.Minute, "CI", "Build failed: missing import path", "#dc322f", "error"},
-		{12 * time.Minute, "gemini:session-0012", "Exploring dependency graph edges", "#b06a3a", "info"},
-	}
+// ── Demo narration and choreography ──────────────────────────────────────────
 
-	activities := make([]model.ActivityEvent, 0, len(entries))
-	for _, e := range entries {
-		activities = append(activities, model.ActivityEvent{
-			Timestamp: now.Add(-e.ago).Format(time.RFC3339),
-			Who:       e.who,
-			Message:   e.message,
-			Color:     e.color,
-			Severity:  e.severity,
-		})
-	}
-	return activities
+type demoEvent struct {
+	tick   int
+	action func(s *model.CityState)
 }
 
-// runDemoTicker advances flying-agent positions in demo mode so UFOs animate
-// smoothly across bezier arcs rather than sitting frozen at their initial
-// FlyProgress values. It ticks at 100 ms (matching the hub's broadcast cadence)
-// and advances each flying agent at a distinct speed so the motion looks varied.
-// When an agent completes its arc (FlyProgress ≥ 1.0) it reverses direction,
-// creating a continuous back-and-forth loop between its two endpoint buildings.
+func guideMsg(t time.Time, msg string) model.ActivityEvent {
+	return model.ActivityEvent{
+		Timestamp: t.Format(time.RFC3339),
+		Who:       "GUIDE",
+		Message:   msg,
+		Color:     "#b58900", // solarized yellow
+		Severity:  "info",
+	}
+}
+
+func buildDemoTimeline() []demoEvent {
+	return []demoEvent{
+		// ── Introduction ──
+		{tick: 1, action: func(s *model.CityState) {
+			s.Activities = model.AppendActivity(s.Activities, guideMsg(time.Now(),
+				"Welcome to Agent City. Each building is a file in the codebase."))
+		}},
+		{tick: 30, action: func(s *model.CityState) {
+			s.Activities = model.AppendActivity(s.Activities, model.ActivityEvent{
+				Timestamp: time.Now().Format(time.RFC3339),
+				Who: "claude:demo-001", Message: "Refactoring error responses in handlers.go",
+				Color: "#4a7a9c", Severity: "info",
+			})
+		}},
+		{tick: 50, action: func(s *model.CityState) {
+			s.Activities = model.AppendActivity(s.Activities, guideMsg(time.Now(),
+				"Building height encodes blast radius \u2014 how many files break if this one changes."))
+		}},
+		{tick: 70, action: func(s *model.CityState) {
+			s.Activities = model.AppendActivity(s.Activities, model.ActivityEvent{
+				Timestamp: time.Now().Format(time.RFC3339),
+				Who: "claude:demo-002", Message: "Writing migration rollback tests",
+				Color: "#6a8a4a", Severity: "info",
+			})
+		}},
+		{tick: 100, action: func(s *model.CityState) {
+			s.Activities = model.AppendActivity(s.Activities, guideMsg(time.Now(),
+				"Color encodes churn \u2014 cyan is stable, red is actively changing."))
+		}},
+		{tick: 130, action: func(s *model.CityState) {
+			s.Activities = model.AppendActivity(s.Activities, guideMsg(time.Now(),
+				"The tallest buildings are the most structurally dangerous to edit."))
+		}},
+
+		// ── Agent spawns and flies toward cow target ──
+		{tick: 150, action: func(s *model.CityState) {
+			s.Agents = append(s.Agents, model.Agent{
+				ID: "claude:demo-005", Color: "orange", Mode: "fly",
+				Task: "Updating feature flags in config.go",
+				FromID: "pkg/api/router.go", ToID: cowTargetID,
+				FlyProgress: 0.0,
+			})
+			s.Activities = model.AppendActivity(s.Activities, model.ActivityEvent{
+				Timestamp: time.Now().Format(time.RFC3339),
+				Who: "claude:demo-005", Message: "Dispatched to config.go \u2014 updating feature flags",
+				Color: "#cb4b16", Severity: "warn",
+			})
+		}},
+		{tick: 180, action: func(s *model.CityState) {
+			s.Activities = model.AppendActivity(s.Activities, guideMsg(time.Now(),
+				"An agent is approaching config.go \u2014 blast radius 25..."))
+		}},
+
+		// ── Agent lands on cow target (fly → work). Cow triggers. ──
+		{tick: 220, action: func(s *model.CityState) {
+			for i := range s.Agents {
+				if s.Agents[i].ID == "claude:demo-005" {
+					s.Agents[i].Mode = "work"
+					s.Agents[i].TargetID = cowTargetID
+					s.Agents[i].FromID = ""
+					s.Agents[i].ToID = ""
+					s.Agents[i].FlyProgress = 0
+					s.Agents[i].Progress = 5
+					s.Agents[i].LocationConfidence = "exact"
+					break
+				}
+			}
+		}},
+		{tick: 225, action: func(s *model.CityState) {
+			s.Activities = model.AppendActivity(s.Activities, guideMsg(time.Now(),
+				"\U0001f404 An agent is editing a high-risk file! 25 downstream files at risk."))
+		}},
+
+		// ── Post-cow: progress and wrap-up ──
+		{tick: 260, action: func(s *model.CityState) {
+			for i := range s.Agents {
+				if s.Agents[i].ID == "claude:demo-005" {
+					s.Agents[i].Progress = 35
+					break
+				}
+			}
+			s.Activities = model.AppendActivity(s.Activities, model.ActivityEvent{
+				Timestamp: time.Now().Format(time.RFC3339),
+				Who: "claude:demo-005", Message: "Modifying config.go \u2014 12 downstream files affected",
+				Color: "#cb4b16", Severity: "warn",
+			})
+		}},
+		{tick: 300, action: func(s *model.CityState) {
+			s.Activities = model.AppendActivity(s.Activities, guideMsg(time.Now(),
+				"Select any building to see its blast radius, churn, and dependency arcs."))
+		}},
+
+		// ── Agent departs, resumes flight loop ──
+		{tick: 350, action: func(s *model.CityState) {
+			for i := range s.Agents {
+				if s.Agents[i].ID == "claude:demo-005" {
+					s.Agents[i].Mode = "fly"
+					s.Agents[i].TargetID = ""
+					s.Agents[i].FromID = cowTargetID
+					s.Agents[i].ToID = "pkg/core/engine.go"
+					s.Agents[i].FlyProgress = 0.0
+					break
+				}
+			}
+		}},
+	}
+}
+
+// runDemoTicker drives the scripted demo timeline and continuous flight
+// animation. Events fire at predetermined tick counts (100ms per tick).
+// After all scripted events have fired (~35s), flying agents continue
+// looping on their bezier arcs indefinitely.
 func runDemoTicker(ctx context.Context, state *hub.State, h *hub.Hub) {
-	const tick = 100 * time.Millisecond
-	// FlyProgress increments per tick — yields flight durations of roughly
-	// 7 s, 10 s, 6 s, and 9 s respectively.
+	const tickRate = 100 * time.Millisecond
 	flySpeeds := [4]float64{0.014, 0.010, 0.017, 0.011}
 
-	ticker := time.NewTicker(tick)
+	ticker := time.NewTicker(tickRate)
 	defer ticker.Stop()
+
+	events := buildDemoTimeline()
+	eventIdx := 0
+	tickCount := 0
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			tickCount++
 			changed := false
+
 			state.Update(func(curr model.CityState) model.CityState {
+				// Fire all scheduled events at or before this tick.
+				for eventIdx < len(events) && events[eventIdx].tick <= tickCount {
+					events[eventIdx].action(&curr)
+					eventIdx++
+					changed = true
+				}
+
+				// Advance all flying agents.
 				fi := 0
 				for i := range curr.Agents {
 					a := &curr.Agents[i]
-					if a.FromID != "" && a.ToID != "" {
+					if a.Mode == "fly" && a.FromID != "" && a.ToID != "" {
 						a.FlyProgress += flySpeeds[fi%len(flySpeeds)]
 						fi++
 						if a.FlyProgress >= 1.0 {
-							// Completed arc — swap endpoints so the agent
-							// immediately starts the return journey.
 							a.FlyProgress = 0.0
 							a.FromID, a.ToID = a.ToID, a.FromID
 						}
 						changed = true
 					}
 				}
+
 				return curr
 			})
+
 			if changed {
 				h.Notify()
 			}
