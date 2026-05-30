@@ -478,30 +478,42 @@ export function drawHoverHighlight(
   camera: IsometricCamera,
   b: Building,
 ): void {
-  const pad = 0.3;
-
-  const A  = camera.project(b.gx - pad, b.gy - pad);
-  const B  = camera.project(b.gx + b.gw + pad, b.gy - pad);
-  const B2 = camera.project(b.gx + b.gw + pad, b.gy - pad, b.gz);
-  const C2 = camera.project(b.gx + b.gw + pad, b.gy + b.gh + pad, b.gz);
-  const D2 = camera.project(b.gx - pad, b.gy + b.gh + pad, b.gz);
-  const D  = camera.project(b.gx - pad, b.gy + b.gh + pad);
+  // Subtle cyan glow on the visible faces.
+  const A  = camera.project(b.gx, b.gy);
+  const B  = camera.project(b.gx + b.gw, b.gy);
+  const D  = camera.project(b.gx, b.gy + b.gh);
+  const A2 = camera.project(b.gx, b.gy, b.gz);
+  const B2 = camera.project(b.gx + b.gw, b.gy, b.gz);
+  const C2 = camera.project(b.gx + b.gw, b.gy + b.gh, b.gz);
+  const D2 = camera.project(b.gx, b.gy + b.gh, b.gz);
 
   ctx.save();
-  ctx.strokeStyle = SD.cyan;
-  ctx.lineWidth = 1.5;
-  ctx.globalAlpha = 0.55;
-  ctx.shadowColor = SD.cyan;
-  ctx.shadowBlur = 8;
+  ctx.fillStyle = 'rgba(74,138,138,0.12)';
+
   ctx.beginPath();
   ctx.moveTo(A[0], A[1]);
   ctx.lineTo(B[0], B[1]);
   ctx.lineTo(B2[0], B2[1]);
+  ctx.lineTo(A2[0], A2[1]);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(A[0], A[1]);
+  ctx.lineTo(D[0], D[1]);
+  ctx.lineTo(D2[0], D2[1]);
+  ctx.lineTo(A2[0], A2[1]);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(A2[0], A2[1]);
+  ctx.lineTo(B2[0], B2[1]);
   ctx.lineTo(C2[0], C2[1]);
   ctx.lineTo(D2[0], D2[1]);
-  ctx.lineTo(D[0], D[1]);
   ctx.closePath();
-  ctx.stroke();
+  ctx.fill();
+
   ctx.restore();
 }
 
@@ -513,31 +525,49 @@ export function drawCursorHighlight(
   ctx: CanvasRenderingContext2D,
   camera: IsometricCamera,
   b: IsoBox,
+  time = 0,
 ): void {
-  const pad = 0.5;
+  // Pulse the visible faces with a warm glow that oscillates in opacity.
+  const pulse = 0.15 + 0.15 * Math.sin(time * 0.004);
 
-  const A  = camera.project(b.gx - pad, b.gy - pad);
-  const B  = camera.project(b.gx + b.gw + pad, b.gy - pad);
-  const B2 = camera.project(b.gx + b.gw + pad, b.gy - pad, b.gz);
-  const C2 = camera.project(b.gx + b.gw + pad, b.gy + b.gh + pad, b.gz);
-  const D2 = camera.project(b.gx - pad, b.gy + b.gh + pad, b.gz);
-  const D  = camera.project(b.gx - pad, b.gy + b.gh + pad);
+  const A  = camera.project(b.gx, b.gy);
+  const B  = camera.project(b.gx + b.gw, b.gy);
+  const D  = camera.project(b.gx, b.gy + b.gh);
+  const A2 = camera.project(b.gx, b.gy, b.gz);
+  const B2 = camera.project(b.gx + b.gw, b.gy, b.gz);
+  const C2 = camera.project(b.gx + b.gw, b.gy + b.gh, b.gz);
+  const D2 = camera.project(b.gx, b.gy + b.gh, b.gz);
 
   ctx.save();
-  ctx.setLineDash([5, 3]);
-  ctx.strokeStyle = '#d4a017';
-  ctx.lineWidth = 2;
-  ctx.shadowColor = '#d4a017';
-  ctx.shadowBlur = 6;
+  ctx.fillStyle = `rgba(212,160,23,${pulse})`;
+
+  // Right face
   ctx.beginPath();
   ctx.moveTo(A[0], A[1]);
   ctx.lineTo(B[0], B[1]);
   ctx.lineTo(B2[0], B2[1]);
+  ctx.lineTo(A2[0], A2[1]);
+  ctx.closePath();
+  ctx.fill();
+
+  // Left face
+  ctx.beginPath();
+  ctx.moveTo(A[0], A[1]);
+  ctx.lineTo(D[0], D[1]);
+  ctx.lineTo(D2[0], D2[1]);
+  ctx.lineTo(A2[0], A2[1]);
+  ctx.closePath();
+  ctx.fill();
+
+  // Roof
+  ctx.beginPath();
+  ctx.moveTo(A2[0], A2[1]);
+  ctx.lineTo(B2[0], B2[1]);
   ctx.lineTo(C2[0], C2[1]);
   ctx.lineTo(D2[0], D2[1]);
-  ctx.lineTo(D[0], D[1]);
   ctx.closePath();
-  ctx.stroke();
+  ctx.fill();
+
   ctx.restore();
 }
 

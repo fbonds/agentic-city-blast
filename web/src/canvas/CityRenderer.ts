@@ -256,12 +256,12 @@ export class CityRenderer {
         const target = this.cursorDistrictId
           ? this.districtBuildings.find((d) => d.id === this.cursorDistrictId)
           : undefined;
-        if (target) drawCursorHighlight(ctx, this.camera, target);
+        if (target) drawCursorHighlight(ctx, this.camera, target, now);
       } else if (this._lodLevel === 'L2') {
         const target = this.cursorBuildingId
           ? this.city.buildings.find((b) => b.id === this.cursorBuildingId)
           : undefined;
-        if (target) drawCursorHighlight(ctx, this.camera, target);
+        if (target) drawCursorHighlight(ctx, this.camera, target, now);
       }
     }
 
