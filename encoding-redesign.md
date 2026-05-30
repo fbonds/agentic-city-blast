@@ -185,10 +185,15 @@ produces. No analyzer rewrite is required for a first version.
 - **agentwatch integration / agent tracking** (`internal/agents/`).
 - **The agent (UFO) layer**, scanner, watcher core, coverage system.
 
-**Note:** The original plan listed `internal/layout/engine.go` as not-touched.
-In practice, the cross-district compression problem (see §5) required replacing
-the uniform grid with a content-weighted treemap (Phase 2a). Position remains
-directory-anchored; only district *sizing* changed.
+**Notes on scope changes:**
+- The original plan listed `internal/layout/engine.go` as not-touched.
+  In practice, the cross-district compression problem (see §5) required
+  replacing the uniform grid with a content-weighted treemap (Phase 2a).
+  Position remains directory-anchored; only district *sizing* changed.
+- `web/src/canvas/RoadRenderer.ts` was rewritten as a UX improvement:
+  ground-level dotted lines replaced with rooftop-to-rooftop bezier arcs,
+  shown only when a building is selected (cyan = outgoing, blue = incoming).
+  This was not part of the encoding redesign but emerged from the same work.
 
 ---
 

@@ -1,4 +1,4 @@
-# Session handoff — Phase 3 complete
+# Session handoff — Core redesign complete
 
 **Last touched:** 2026-05-29. Terminal Claude Code session in this directory.
 
@@ -6,46 +6,33 @@
 
 ## Committed and pushed
 
-Everything through Phase 2b is committed on `main`.
+Everything is committed and pushed on `main`. Working tree is clean.
 
-## Uncommitted on disk right now
+- **Phase 1:** Blast radius → building height. `internal/deps/blastradius.go`
+  computes transitive dependents via reverse BFS.
+  `heightFromBlastRadius` uses `clamp(3 + 3·log₂(1+BR), 3, 30)`.
 
-### Phase 3 — Churn as color (the encoding redesign's final piece)
+- **Phase 1.5a — Footprint refactor:** `footprint()` switched from LOC to
+  BlastRadius. `w = clamp(4 + √BR, 4, 12)`, `h = 0.8w`.
 
-**Backend:**
-- `internal/model/model.go`: `Churn float64` field added to Building.
-- `internal/repo/churn.go` (new): `ComputeChurn` runs
-  `git log --since=90days --name-only --format="" --diff-filter=AMRC`,
-  `parseChurnOutput` counts commits per file, `NormalizeChurn` applies
-  log normalization (`log(1+count)/log(1+max)`) to [0,1].
-- `internal/repo/churn_test.go` (new): 13 table-driven tests for parsing,
-  normalization, and config defaults.
-- `internal/city/builder.go`: `AssembleState` gains a `churn` parameter.
-  `BuildState` calls `ComputeChurn` + `NormalizeChurn` (best-effort).
-  `MergeBuildings` preserves `Churn` on incremental updates.
-- `internal/city/builder_test.go`: 3 new tests (`ChurnPopulated`,
-  `ChurnNil`, `PreservesChurn`), all existing `AssembleState` calls updated.
-- `cmd/agentic-city/main.go`: demo buildings get random churn values.
+- **Phase 1.5b — MergeBuildings bug fix:** Preserves BlastRadius and Churn
+  on incremental edits.
 
-**Frontend:**
-- `web/src/store/cityStore.ts`: `churn: number` on Building interface.
-- `web/src/hud/palette.ts`: `churnColor()` — 5-stop ramp
-  (cyan → blue → yellow → orange → red).
-- `web/src/canvas/BuildingRenderer.ts`: `LANG_COLORS` removed, replaced
-  with `churnColor(b.churn)`. Header comment updated.
-- `web/src/hud/RightRail.tsx`: churn row in BuildingPanel (shows percentage
-  or "cold").
-- 4 test files: `churn: 0` added to mock buildings.
+- **Phase 1.5c — Frontend null guard:** `districtThresholds` crash fix.
 
-**Docs:**
-- `README.md`: Phase 3 marked Done, churn description updated, known issue
-  added for agent-driven churn noise.
-- `SESSION_STATE.md`: this file.
-- `encoding-redesign.md`: not yet updated for Phase 3 (do next).
-- `.gitignore`: screenshot image patterns added.
+- **Phase 2a — Treemap district sizing:** Uniform grid replaced with
+  `squarify()` weighted by total footprint area per district.
 
-**Tests:** `go test ./internal/...` all green. `go vet` clean.
-TypeScript clean, ESLint clean, all 116 frontend tests pass.
+- **Phase 2b — HUD legend update:** RightRail shows blast radius, churn,
+  and LOC when a building is selected.
+
+- **Phase 3 — Churn as color:** `internal/repo/churn.go` runs
+  `git log --since=90days`, log-normalizes to [0,1]. Frontend replaces
+  language-based tint with 5-stop churn ramp (cyan → red).
+
+- **Road arcs:** `web/src/canvas/RoadRenderer.ts` rewritten. Roads hidden
+  by default; on building selection, shows rooftop-to-rooftop bezier arcs
+  (cyan = outgoing, blue = incoming) with endpoint dots.
 
 ## What's running
 
@@ -66,9 +53,10 @@ Browser: <http://localhost:5173>.
 
 | Priority | Item | Notes |
 |----------|------|-------|
-| 1 | Commit Phase 3 + all uncommitted work | Working tree has significant changes. |
-| 2 | Update `encoding-redesign.md` for Phase 3 | Mark churn decisions as resolved. |
-| — | `encoding-redesign.md` §6 | Companion doc tasks (DESIGN.md pointer). Low priority. |
+| — | `encoding-redesign.md` §6 | DESIGN.md pointer note. Low priority. |
+
+The core encoding redesign is complete. All three visual channels are live:
+height = blast radius, footprint = blast radius, color = churn.
 
 ## Known issues
 
@@ -83,9 +71,7 @@ Browser: <http://localhost:5173>.
 
 Reload <http://localhost:5173> after the backend is up.
 
-- Buildings should be **tinted by churn**: cyan (cold) → red (hot).
-- Most buildings in a young fork will be cyan/blue; recently touched files
-  (builder.go, engine.go, packer.go) should be warmer.
-- Districts should be **different sizes** (treemap by footprint area).
+- Buildings **tinted by churn**: cyan (cold) → red (hot).
+- Districts are **different sizes** (treemap by footprint area).
 - Selecting a building shows **blast radius**, **churn**, and **LOC** in
-  the RightRail.
+  the RightRail, plus **rooftop bezier arcs** for dependency edges.
